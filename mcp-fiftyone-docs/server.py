@@ -5,8 +5,9 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-DOCS_DIR = Path("docs")
-INDEX_FILE = Path("index.json")
+BASE_DIR = Path(__file__).resolve().parent
+DOCS_DIR = BASE_DIR / "docs"
+INDEX_FILE = BASE_DIR / "index.json"
 CHAR_LIMIT = 25_000
 
 # Load index at startup
