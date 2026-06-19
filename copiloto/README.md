@@ -22,23 +22,25 @@ webcam ──► modelo HF de somnolencia (transformers)   ─┐
 
 ## Instalación (Windows / PowerShell)
 
-> **Nota Python 3.14:** `torch`, `mediapipe` y `fiftyone` pueden no tener wheels
-> para 3.14 todavía. Si la instalación completa falla, usa la **capa core +
-> mediapipe** y corre con `--no-model` (somnolencia por EAR, sin torch).
-
+**Opción A — script automático (recomendado):**
 ```powershell
-python -m venv copiloto/venv
-copiloto/venv/Scripts/Activate.ps1
-python -m pip install --upgrade pip
+# Desde la raíz del repo:
+.\copiloto\install.ps1
+```
+El script crea el venv, instala todo y corrige automáticamente el conflicto de OpenCV.
 
-# Capa core (siempre)
-pip install opencv-python pillow numpy python-dotenv requests pyttsx3
-# Detección facial (somnolencia EAR + distracción)
-pip install mediapipe
-# Modelo HF (si hay wheels para tu Python)
-pip install transformers torch
-# Validación
-pip install fiftyone
+**Opción B — manual paso a paso:**
+```powershell
+python -m venv copiloto\venv
+copiloto\venv\Scripts\python.exe -m pip install --upgrade pip
+copiloto\venv\Scripts\pip.exe install pillow numpy python-dotenv requests pyttsx3
+copiloto\venv\Scripts\pip.exe install mediapipe
+copiloto\venv\Scripts\pip.exe install transformers torch
+copiloto\venv\Scripts\pip.exe install fiftyone
+
+# IMPORTANTE: fiftyone instala opencv-headless (sin ventana), esto lo corrige:
+copiloto\venv\Scripts\pip.exe uninstall opencv-python-headless -y
+copiloto\venv\Scripts\pip.exe install --force-reinstall opencv-python
 ```
 
 ## Configuración de Telegram
