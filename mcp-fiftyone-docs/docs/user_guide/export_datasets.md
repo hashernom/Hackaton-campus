@@ -1,0 +1,4368 @@
+# Exporting FiftyOne Datasets#
+
+FiftyOne provides native support for exporting datasets to disk in a variety of common formats, and it can be easily extended to export datasets in custom formats.
+
+Note
+
+Did you know? You can export media and/or labels from within the FiftyOne App by installing the [@voxel51/io](https://github.com/voxel51/fiftyone-plugins/tree/main/plugins/io) plugin!
+
+## Basic recipe#
+
+The interface for exporting a FiftyOne [`Dataset`](../api/fiftyone.core.dataset.html#fiftyone.core.dataset.Dataset "fiftyone.core.dataset.Dataset") is conveniently exposed via the Python library and the CLI. You can easily export entire datasets as well as arbitrary subsets of your datasets that you have identified by constructing a [`DatasetView`](../api/fiftyone.core.view.html#fiftyone.core.view.DatasetView "fiftyone.core.view.DatasetView") into any format of your choice via the basic recipe below.
+
+PythonCLI
+
+You can export a [`Dataset`](../api/fiftyone.core.dataset.html#fiftyone.core.dataset.Dataset "fiftyone.core.dataset.Dataset") or [`DatasetView`](../api/fiftyone.core.view.html#fiftyone.core.view.DatasetView "fiftyone.core.view.DatasetView") via their [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") method:
+    
+    
+     1import fiftyone as fo
+     2
+     3# The Dataset or DatasetView containing the samples you wish to export
+     4dataset_or_view = fo.load_dataset(...)
+     5
+     6# The directory to which to write the exported dataset
+     7export_dir = "/path/for/export"
+     8
+     9# The name of the sample field containing the label that you wish to export
+    10# Used when exporting labeled datasets (e.g., classification or detection)
+    11label_field = "ground_truth"  # for example
+    12
+    13# The type of dataset to export
+    14# Any subclass of `fiftyone.types.Dataset` is supported
+    15dataset_type = fo.types.COCODetectionDataset  # for example
+    16
+    17# Export the dataset
+    18dataset_or_view.export(
+    19    export_dir=export_dir,
+    20    dataset_type=dataset_type,
+    21    label_field=label_field,
+    22)
+    
+
+Note the `label_field` argument in the above example, which specifies the particular label field that you wish to export. This is necessary if your FiftyOne dataset contains multiple label fields.
+
+The [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") method also provides additional parameters that you can use to configure the export. For example, you can use the `data_path` and `labels_path` parameters to independently customize the location of the exported media and labels, including labels-only exports:
+    
+    
+    1# Export **only** labels in the `ground_truth` field in COCO format
+    2# with absolute image filepaths in the labels
+    3dataset_or_view.export(
+    4    dataset_type=fo.types.COCODetectionDataset,
+    5    labels_path="/path/for/export.json",
+    6    label_field="ground_truth",
+    7    abs_paths=True,
+    8)
+    
+
+Or you can use the `export_media` parameter to configure whether to copy, move, symlink, or omit the media files from the export:
+    
+    
+    1# Export the labels in the `ground_truth` field in COCO format, and
+    2# move (rather than copy) the source media to the output directory
+    3dataset_or_view.export(
+    4    export_dir="/path/for/export",
+    5    dataset_type=fo.types.COCODetectionDataset,
+    6    label_field="ground_truth",
+    7    export_media="move",
+    8)
+    
+
+In general, you can pass any parameter for the [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") of the format youâre writing to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export").
+
+You can export a FiftyOne dataset [via the CLI](../cli/index.html#cli-fiftyone-datasets-export):
+    
+    
+    # The name of the FiftyOne dataset to export
+    NAME="your-dataset"
+    
+    # The directory to which to write the exported dataset
+    EXPORT_DIR=/path/for/export
+    
+    # The name of the sample field containing the label that you wish to export
+    # Used when exporting labeled datasets (e.g., classification or detection)
+    LABEL_FIELD=ground_truth  # for example
+    
+    # The type of dataset to export
+    # Any subclass of `fiftyone.types.Dataset` is supported
+    TYPE=fiftyone.types.COCODetectionDataset  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type $TYPE \
+        --label-field $LABEL_FIELD
+    
+
+Note the `LABEL_FIELD` argument in the above example, which specifies the particular label field that you wish to export. This is necessary your FiftyOne dataset contains multiple label fields.
+
+You can use the [kwargs option](../cli/index.html#cli-fiftyone-datasets-export) to provide additional parameters to configure the export. For example, you can use the `data_path` and `labels_path` parameters to independently customize the location of the exported media and labels, including labels-only exports:
+    
+    
+    # Export **only** labels in the `ground_truth` field in COCO format
+    # with absolute image filepaths in the labels
+    fiftyone datasets export $NAME \
+        --type fiftyone.types.COCODetectionDataset \
+        --label-field ground_truth \
+        --kwargs \
+            labels_path=/path/for/labels.json \
+            abs_paths=True
+    
+
+Or you can use the `export_media` parameter to configure whether to copy, move, symlink, or omit the media files from the export:
+    
+    
+    # Export the labels in the `ground_truth` field in COCO format, and
+    # move (rather than copy) the source media to the output directory
+    fiftyone datasets export $NAME \
+        --export-dir /path/for/export \
+        --type fiftyone.types.COCODetectionDataset \
+        --label-field ground_truth \
+        --kwargs export_media=move
+    
+
+In general, you can pass any parameter for the [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") of the format youâre writing via the [kwargs option](../cli/index.html#cli-fiftyone-datasets-export).
+
+## Label type coercion#
+
+For your convenience, the [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") method will automatically coerce the data to match the requested export types in a variety of common cases listed below.
+
+### Single labels to lists#
+
+Many export formats expect label list types ([`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), or [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")). If you provide a label field to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") that refers to a single label type ([`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification"), [`Detection`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detection "fiftyone.core.labels.Detection"), [`Polyline`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polyline "fiftyone.core.labels.Polyline"), or [`Keypoint`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoint "fiftyone.core.labels.Keypoint")), then the labels will be automatically upgraded to single-label lists to match the export typeâs expectations.
+    
+    
+     1import fiftyone as fo
+     2import fiftyone.zoo as foz
+     3
+     4dataset = foz.load_zoo_dataset("quickstart")
+     5patches = dataset.to_patches("ground_truth")
+     6
+     7# The `ground_truth` field has type `Detection`, but COCO format expects
+     8# `Detections`, so the labels are automatically coerced to single-label lists
+     9patches.export(
+    10    export_dir="/tmp/quickstart/detections",
+    11    dataset_type=fo.types.COCODetectionDataset,
+    12    label_field="ground_truth",
+    13)
+    
+
+### Classifications as detections#
+
+When exporting in labeled image dataset formats that expect [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") labels, if you provide a label field to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") that has type [`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification"), the classification labels will be automatically upgraded to detections that span the entire images.
+    
+    
+     1import fiftyone as fo
+     2import fiftyone.zoo as foz
+     3
+     4dataset = foz.load_zoo_dataset("quickstart").limit(5).clone()
+     5
+     6for idx, sample in enumerate(dataset):
+     7    sample["attribute"] = fo.Classification(label=str(idx))
+     8    sample.save()
+     9
+    10# Exports the `attribute` classifications as detections that span entire images
+    11dataset.export(
+    12    export_dir="/tmp/quickstart/attributes",
+    13    dataset_type=fo.types.COCODetectionDataset,
+    14    label_field="attribute",
+    15)
+    
+
+### Object patches#
+
+When exporting in either an unlabeled image or image classification format, if a spatial label field ([`Detection`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detection "fiftyone.core.labels.Detection"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polyline`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polyline "fiftyone.core.labels.Polyline"), or [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines")) is provided to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export"), the [object patches](app.html#app-object-patches) of the provided samples will be exported.
+    
+    
+     1import fiftyone as fo
+     2import fiftyone.zoo as foz
+     3
+     4dataset = foz.load_zoo_dataset("quickstart")
+     5
+     6# No label field is provided; only images are exported
+     7dataset.export(
+     8    export_dir="/tmp/quickstart/images",
+     9    dataset_type=fo.types.ImageDirectory,
+    10)
+    11
+    12# A detections field is provided, so the object patches are exported as a
+    13# directory of images
+    14dataset.export(
+    15    export_dir="/tmp/quickstart/patches",
+    16    dataset_type=fo.types.ImageDirectory,
+    17    label_field="ground_truth",
+    18)
+    19
+    20# A detections field is provided, so the object patches are exported as an
+    21# image classification directory tree
+    22dataset.export(
+    23    export_dir="/tmp/quickstart/objects",
+    24    dataset_type=fo.types.ImageClassificationDirectoryTree,
+    25    label_field="ground_truth",
+    26)
+    
+
+You can also directly call [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") on [patches views](using_views.html#object-patches-views) to export the specified object patches along with their appropriately typed labels.
+    
+    
+     1# Continuing from above...
+     2
+     3patches = dataset.to_patches("ground_truth")
+     4
+     5# Export the object patches as a directory of images
+     6patches.export(
+     7    export_dir="/tmp/quickstart/also-patches",
+     8    dataset_type=fo.types.ImageDirectory,
+     9)
+    10
+    11# Export the object patches as an image classification directory tree
+    12patches.export(
+    13    export_dir="/tmp/quickstart/also-objects",
+    14    dataset_type=fo.types.ImageClassificationDirectoryTree,
+    15)
+    
+
+### Video clips#
+
+When exporting in either an unlabeled video or video classification format, if a [`TemporalDetection`](../api/fiftyone.core.labels.html#fiftyone.core.labels.TemporalDetection "fiftyone.core.labels.TemporalDetection") or [`TemporalDetections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.TemporalDetections "fiftyone.core.labels.TemporalDetections") field is provided to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export"), the specified [video clips](app.html#app-video-clips) will be exported.
+    
+    
+     1import fiftyone as fo
+     2import fiftyone.zoo as foz
+     3
+     4dataset = foz.load_zoo_dataset("quickstart-video", max_samples=2)
+     5
+     6# Add some temporal detections to the dataset
+     7sample1 = dataset.first()
+     8sample1["events"] = fo.TemporalDetections(
+     9    detections=[
+    10        fo.TemporalDetection(label="first", support=[31, 60]),
+    11        fo.TemporalDetection(label="second", support=[90, 120]),
+    12    ]
+    13)
+    14sample1.save()
+    15
+    16sample2 = dataset.last()
+    17sample2["events"] = fo.TemporalDetections(
+    18    detections=[
+    19        fo.TemporalDetection(label="first", support=[16, 45]),
+    20        fo.TemporalDetection(label="second", support=[75, 104]),
+    21    ]
+    22)
+    23sample2.save()
+    24
+    25# A temporal detection field is provided, so the clips are exported as a
+    26# directory of videos
+    27dataset.export(
+    28    export_dir="/tmp/quickstart-video/clips",
+    29    dataset_type=fo.types.VideoDirectory,
+    30    label_field="events",
+    31)
+    32
+    33# A temporal detection field is provided, so the clips are exported as a
+    34# video classification directory tree
+    35dataset.export(
+    36    export_dir="/tmp/quickstart-video/video-classifications",
+    37    dataset_type=fo.types.VideoClassificationDirectoryTree,
+    38    label_field="events",
+    39)
+    
+
+You can also directly call [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") on [clip views](using_views.html#clip-views) to export the specified video clips along with their appropriately typed labels.
+    
+    
+     1# Continuing from above...
+     2
+     3clips = dataset.to_clips("events")
+     4
+     5# Export the clips as a directory of videos
+     6clips.export(
+     7    export_dir="/tmp/quickstart-video/also-clips",
+     8    dataset_type=fo.types.VideoDirectory,
+     9)
+    10
+    11# Export the clips as a video classification directory tree
+    12clips.export(
+    13    export_dir="/tmp/quickstart-video/clip-classifications",
+    14    dataset_type=fo.types.VideoClassificationDirectoryTree,
+    15)
+    16
+    17# Export the clips along with their associated frame labels
+    18clips.export(
+    19    export_dir="/tmp/quickstart-video/clip-frame-labels",
+    20    dataset_type=fo.types.FiftyOneVideoLabelsDataset,
+    21    frame_labels_field="detections",
+    22)
+    
+
+## Class lists#
+
+Certain labeled image/video export formats such as COCO and YOLO store an explicit list of classes for the label field being exported.
+
+By convention, all exporters provided by FiftyOne should provide a `classes` parameter that allows for manually specifying the classes list to use.
+
+If no explicit class list is provided, the observed classes in the collection being exported are used, which may be a subset of the classes in the parent dataset when exporting a view.
+
+Note
+
+See [this section](using_datasets.html#storing-classes) for more information about storing class lists on FiftyOne datasets.
+    
+    
+     1import fiftyone as fo
+     2import fiftyone.zoo as foz
+     3from fiftyone import ViewField as F
+     4
+     5# Load 10 samples containing cats and dogs (among other objects)
+     6dataset = foz.load_zoo_dataset(
+     7    "coco-2017",
+     8    split="validation",
+     9    classes=["cat", "dog"],
+    10    shuffle=True,
+    11    max_samples=10,
+    12)
+    13
+    14# Loading zoo datasets generally populates the `default_classes` attribute
+    15print(len(dataset.default_classes))  # 91
+    16
+    17# Create a view that only contains cats and dogs
+    18view = dataset.filter_labels("ground_truth", F("label").is_in(["cat", "dog"]))
+    19
+    20# By default, only the observed classes will be stored as COCO categories
+    21view.export(
+    22    labels_path="/tmp/coco1.json",
+    23    dataset_type=fo.types.COCODetectionDataset,
+    24)
+    25
+    26# However, if desired, we can explicitly provide a classes list
+    27view.export(
+    28    labels_path="/tmp/coco2.json",
+    29    dataset_type=fo.types.COCODetectionDataset,
+    30    classes=dataset.default_classes,
+    31)
+    
+
+## Built-in formats#
+
+FiftyOne provides a variety of built-in exporters for common data formats.
+
+Each data format is represented by a subclass of [`fiftyone.types.Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset"), which is used by the Python library and CLI to refer to the corresponding dataset format when writing the dataset to disk.
+
+Dataset Type | Description  
+---|---  
+Image Directory | A directory of images.  
+Video Directory | A directory of videos.  
+Media Directory | A directory of media files.  
+Image Classification Directory Tree | A directory tree whose subfolders define an image classification dataset.  
+Video Classification Directory Tree | A directory tree whose subfolders define a video classification dataset.  
+FiftyOne Image Classification | A labeled dataset consisting of images and their associated classification labels in a simple JSON format.  
+TF Image Classification | A labeled dataset consisting of images and their associated classification labels stored as TFRecords.  
+COCO | A labeled dataset consisting of images and their associated object detections saved in [COCO Object Detection Format](https://cocodataset.org/#format-data).  
+VOC | A labeled dataset consisting of images and their associated object detections saved in [VOC format](http://host.robots.ox.ac.uk/pascal/VOC).  
+KITTI | A labeled dataset consisting of images and their associated object detections saved in [KITTI format](http://www.cvlibs.net/datasets/kitti/eval_object.php).  
+YOLOv4 | A labeled dataset consisting of images and their associated object detections saved in [YOLOv4 format](https://github.com/AlexeyAB/darknet).  
+YOLOv5 | A labeled dataset consisting of images and their associated object detections saved in [YOLOv5 format](https://github.com/ultralytics/yolov5).  
+FiftyOne Object Detection | A labeled dataset consisting of images and their associated object detections stored in a simple JSON format.  
+FiftyOne Temporal Detection | A labeled dataset consisting of videos and their associated temporal detections in a simple JSON format.  
+TF Object Detection | A labeled dataset consisting of images and their associated object detections stored as TFRecords in [TF Object Detection API format ](https://github.com/tensorflow/models/blob/master/research/object_detection).  
+Image Segmentation Directory | A labeled dataset consisting of images and their associated semantic segmentations stored as images on disk.  
+CVAT Image | A labeled dataset consisting of images and their associated object detections stored in [CVAT image format](https://github.com/opencv/cvat).  
+CVAT Video | A labeled dataset consisting of videos and their associated object detections stored in [CVAT video format](https://github.com/opencv/cvat).  
+BDD | A labeled dataset consisting of images and their associated multitask predictions saved in [Berkeley DeepDrive (BDD) format](http://bdd-data.berkeley.edu).  
+CSV | A flexible CSV format that represents slice(s) of a datasetâs values as columns of a CSV file.  
+GeoJSON | An image or video dataset whose location data and labels are stored in [GeoJSON format](https://en.wikipedia.org/wiki/GeoJSON).  
+FiftyOne Dataset | A dataset consisting of an entire serialized [`Dataset`](../api/fiftyone.core.dataset.html#fiftyone.core.dataset.Dataset "fiftyone.core.dataset.Dataset") and its associated source media.  
+FiftyOne Image Labels | A labeled dataset consisting of images and their associated multitask predictions stored in [ETA ImageLabels format ](https://github.com/voxel51/eta/blob/develop/docs/image_labels_guide.md).  
+FiftyOne Video Labels | A labeled dataset consisting of videos and their associated multitask predictions stored in [ETA VideoLabels format ](https://github.com/voxel51/eta/blob/develop/docs/video_labels_guide.md).  
+Custom formats | Export datasets in custom formats by defining your own [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") or [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") class.  
+  
+## Image Directory#
+
+The [`fiftyone.types.ImageDirectory`](../api/fiftyone.types.html#fiftyone.types.ImageDirectory "fiftyone.types.ImageDirectory") type represents a directory of images.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        <filename1>.<ext>
+        <filename2>.<ext>
+        ...
+    
+
+Note
+
+See [`ImageDirectoryExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.ImageDirectoryExporter "fiftyone.utils.data.exporters.ImageDirectoryExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export the images in a FiftyOne dataset as a directory of images on disk as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/images-dir"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir, dataset_type=fo.types.ImageDirectory
+    11)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/to/images-dir
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.ImageDirectory
+    
+
+## Video Directory#
+
+The [`fiftyone.types.VideoDirectory`](../api/fiftyone.types.html#fiftyone.types.VideoDirectory "fiftyone.types.VideoDirectory") type represents a directory of videos.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        <filename1>.<ext>
+        <filename2>.<ext>
+        ...
+    
+
+Note
+
+See [`VideoDirectoryExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.VideoDirectoryExporter "fiftyone.utils.data.exporters.VideoDirectoryExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export the videos in a FiftyOne dataset as a directory of videos on disk as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/videos-dir"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir, dataset_type=fo.types.VideoDirectory
+    11)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/to/videos-dir
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.VideoDirectory
+    
+
+## Media Directory#
+
+The [`fiftyone.types.MediaDirectory`](../api/fiftyone.types.html#fiftyone.types.MediaDirectory "fiftyone.types.MediaDirectory") type represents a directory of media files.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        <filename1>.<ext>
+        <filename2>.<ext>
+        ...
+    
+
+Note
+
+See [`MediaDirectoryExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.MediaDirectoryExporter "fiftyone.utils.data.exporters.MediaDirectoryExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export the media in a FiftyOne dataset as a directory of media files on disk as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/media-dir"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir, dataset_type=fo.types.MediaDirectory
+    11)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/to/media-dir
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.MediaDirectory
+    
+
+## Image Classification Dir Tree#
+
+Supported label types
+
+[`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification")
+
+The [`fiftyone.types.ImageClassificationDirectoryTree`](../api/fiftyone.types.html#fiftyone.types.ImageClassificationDirectoryTree "fiftyone.types.ImageClassificationDirectoryTree") type represents a directory tree whose subfolders define an image classification dataset.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        <classA>/
+            <image1>.<ext>
+            <image2>.<ext>
+            ...
+        <classB>/
+            <image1>.<ext>
+            <image2>.<ext>
+            ...
+        ...
+    
+
+Unlabeled images are stored in a subdirectory named `_unlabeled`.
+
+Note
+
+See [`ImageClassificationDirectoryTreeExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.ImageClassificationDirectoryTreeExporter "fiftyone.utils.data.exporters.ImageClassificationDirectoryTreeExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as an image classification directory tree stored on disk in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-classification-dir-tree"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.ImageClassificationDirectoryTree,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/image-classification-dir-tree
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.ImageClassificationDirectoryTree
+    
+
+## Video Classification Dir Tree#
+
+Supported label types
+
+[`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification")
+
+The [`fiftyone.types.VideoClassificationDirectoryTree`](../api/fiftyone.types.html#fiftyone.types.VideoClassificationDirectoryTree "fiftyone.types.VideoClassificationDirectoryTree") type represents a directory tree whose subfolders define a video classification dataset.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        <classA>/
+            <video1>.<ext>
+            <video2>.<ext>
+            ...
+        <classB>/
+            <video1>.<ext>
+            <video2>.<ext>
+            ...
+        ...
+    
+
+Unlabeled videos are stored in a subdirectory named `_unlabeled`.
+
+Note
+
+See [`VideoClassificationDirectoryTreeExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.VideoClassificationDirectoryTreeExporter "fiftyone.utils.data.exporters.VideoClassificationDirectoryTreeExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a video classification directory tree stored on disk in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/video-classification-dir-tree"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.VideoClassificationDirectoryTree,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/video-classification-dir-tree
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.VideoClassificationDirectoryTree
+    
+
+## FiftyOne Image Classification#
+
+Supported label types
+
+[`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification"), [`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications")
+
+The [`fiftyone.types.FiftyOneImageClassificationDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneImageClassificationDataset "fiftyone.types.FiftyOneImageClassificationDataset") type represents a labeled dataset consisting of images and their associated classification label(s) stored in a simple JSON format.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels.json
+    
+
+In the simplest case, `labels.json` will be a JSON file in the following format:
+    
+    
+    {
+        "classes": [
+            "<labelA>",
+            "<labelB>",
+            ...
+        ],
+        "labels": {
+            "<uuid1>": <target>,
+            "<uuid2>": <target>,
+            ...
+        }
+    }
+    
+
+If the `classes` field is included in the JSON, the `target` values are class IDs that are mapped to class label strings via `classes[target]`. If no `classes` are included, then the `target` values directly store the label strings.
+
+The target value in `labels` for unlabeled images is `None`.
+
+If you wish to export classifications with associated confidences and/or additional attributes, you can use the `include_confidence` and `include_attributes` parameters to include this information in the export. In this case, `labels.json` will have the following format:
+    
+    
+    {
+        "classes": [
+            "<labelA>",
+            "<labelB>",
+            ...
+        ],
+        "labels": {
+            "<uuid1>": {
+                "label": <target>,
+                "confidence": <optional-confidence>,
+                "attributes": {
+                    <optional-name>: <optional-value>,
+                    ...
+                }
+            },
+            "<uuid2>": {
+                "label": <target>,
+                "confidence": <optional-confidence>,
+                "attributes": {
+                    <optional-name>: <optional-value>,
+                    ...
+                }
+            },
+            ...
+        }
+    }
+    
+
+You can also export multilabel classification fields, in which case `labels.json` will have the following format:
+    
+    
+    {
+        "classes": [
+            "<labelA>",
+            "<labelB>",
+            ...
+        ],
+        "labels": {
+            "<uuid1>": [<target1>, <target2>, ...],
+            "<uuid2>": [<target1>, <target2>, ...],
+            ...
+        }
+    }
+    
+
+where the target values in `labels` may be class strings, class IDs, or dicts in the format described above defining class labels, confidences, and optional attributes, depending on how you configured the export.
+
+Note
+
+See [`FiftyOneImageClassificationDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneImageClassificationDatasetExporter "fiftyone.utils.data.exporters.FiftyOneImageClassificationDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as an image classification dataset stored on disk in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-classification-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.FiftyOneImageClassificationDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/image-classification-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageClassificationDataset
+    
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports in this format by providing the `labels_path` parameter instead of `export_dir` to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a location to write (only) the labels.
+
+Note
+
+You can optionally include the `export_media=False` option to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to make it explicit that you only wish to export labels, although this will be inferred if you do not provide an `export_dir` or `data_path`.
+
+By default, the filenames of your images will be used as keys in the exported labels. However, you can also provide the optional `rel_dir` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a prefix to strip from each image path to generate a key for the image. This argument allows for populating nested subdirectories that match the shape of the input paths.
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels using the basename of each image as keys
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.FiftyOneImageClassificationDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    15
+    16# Export labels using the relative path of each image with respect to
+    17# the given `rel_dir` as keys
+    18dataset_or_view.export(
+    19    dataset_type=fo.types.FiftyOneImageClassificationDataset,
+    20    labels_path=labels_path,
+    21    label_field=label_field,
+    22    rel_dir="/common/images/dir",
+    23)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels using the basename of each image as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageClassificationDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+    # Export labels using the relative path of each image with respect to
+    # the given `rel_dir` as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageClassificationDataset \
+        --kwargs \
+            labels_path=$LABELS_PATH \
+            rel_dir=/common/images/dir
+    
+
+## TF Image Classification#
+
+Supported label types
+
+[`Classification`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classification "fiftyone.core.labels.Classification")
+
+The [`fiftyone.types.TFImageClassificationDataset`](../api/fiftyone.types.html#fiftyone.types.TFImageClassificationDataset "fiftyone.types.TFImageClassificationDataset") type represents a labeled dataset consisting of images and their associated classification labels stored as [TFRecords](https://www.tensorflow.org/tutorials/load_data/tfrecord).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        tf.records-?????-of-?????
+    
+
+where the features of the (possibly sharded) TFRecords are stored in the following format:
+    
+    
+    {
+        # Image dimensions
+        "height": tf.io.FixedLenFeature([], tf.int64),
+        "width": tf.io.FixedLenFeature([], tf.int64),
+        "depth": tf.io.FixedLenFeature([], tf.int64),
+        # Image filename
+        "filename": tf.io.FixedLenFeature([], tf.int64),
+        # The image extension
+        "format": tf.io.FixedLenFeature([], tf.string),
+        # Encoded image bytes
+        "image_bytes": tf.io.FixedLenFeature([], tf.string),
+        # Class label string
+        "label": tf.io.FixedLenFeature([], tf.string, default_value=""),
+    }
+    
+
+For unlabeled samples, the TFRecords do not contain `label` features.
+
+Note
+
+See [`TFImageClassificationDatasetExporter`](../api/fiftyone.utils.tf.html#fiftyone.utils.tf.TFImageClassificationDatasetExporter "fiftyone.utils.tf.TFImageClassificationDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a directory of TFRecords in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/tf-image-classification-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.TFImageClassificationDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/tf-image-classification-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.TFImageClassificationDataset
+    
+
+Note
+
+You can provide the `tf_records_path` argument instead of `export_dir` in the examples above to directly specify the path to the TFRecord(s) to write. See [`TFImageClassificationDatasetExporter`](../api/fiftyone.utils.tf.html#fiftyone.utils.tf.TFImageClassificationDatasetExporter "fiftyone.utils.tf.TFImageClassificationDatasetExporter") for details.
+
+## COCO#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")
+
+The [`fiftyone.types.COCODetectionDataset`](../api/fiftyone.types.html#fiftyone.types.COCODetectionDataset "fiftyone.types.COCODetectionDataset") type represents a labeled dataset consisting of images and their associated object detections saved in [COCO Object Detection Format](https://cocodataset.org/#format-data).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <filename0>.<ext>
+            <filename1>.<ext>
+            ...
+        labels.json
+    
+
+where `labels.json` is a JSON file in the following format:
+    
+    
+    {
+        "info": {
+            "year": "",
+            "version": "",
+            "description": "Exported from FiftyOne",
+            "contributor": "",
+            "url": "https://voxel51.com/fiftyone",
+            "date_created": "2020-06-19T09:48:27"
+        },
+        "licenses": [],
+        "categories": [
+            {
+                "id": 1,
+                "name": "cat",
+                "supercategory": "animal"
+            },
+            ...
+        ],
+        "images": [
+            {
+                "id": 1,
+                "license": null,
+                "file_name": "<filename0>.<ext>",
+                "height": 480,
+                "width": 640,
+                "date_captured": null
+            },
+            ...
+        ],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "bbox": [260, 177, 231, 199],
+                "segmentation": [...],
+                "score": 0.95,
+                "area": 45969,
+                "iscrowd": 0
+            },
+            ...
+        ]
+    }
+    
+
+See [this page](https://cocodataset.org/#format-data) for a full specification of the `segmentation` field, which will only be included if you export [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") with instance masks populated or [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines").
+
+For unlabeled datasets, `labels.json` does not contain an `annotations` field.
+
+The `file_name` attribute of the labels file encodes the location of the corresponding images, which can be any of the following:
+
+  * The filename of an image in the `data/` folder
+
+  * A relative path like `path/to/filename.ext` specifying the relative path to the image in a nested subfolder of `data/`
+
+  * An absolute path to an image, which may or may not be in the `data/` folder
+
+
+
+
+Note
+
+See [`COCODetectionDatasetExporter`](../api/fiftyone.utils.coco.html#fiftyone.utils.coco.COCODetectionDatasetExporter "fiftyone.utils.coco.COCODetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a COCO detection dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.COCODetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/coco-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.COCODetectionDataset
+    
+
+Note
+
+You can pass the optional `classes` or `categories` parameters to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list/category IDs to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports of COCO-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/coco-labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.COCODetectionDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/coco-labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.COCODetectionDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## VOC#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections")
+
+The [`fiftyone.types.VOCDetectionDataset`](../api/fiftyone.types.html#fiftyone.types.VOCDetectionDataset "fiftyone.types.VOCDetectionDataset") type represents a labeled dataset consisting of images and their associated object detections saved in [VOC format](http://host.robots.ox.ac.uk/pascal/VOC).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels/
+            <uuid1>.xml
+            <uuid2>.xml
+            ...
+    
+
+where the labels XML files are in the following format:
+    
+    
+    <annotation>
+        <folder></folder>
+        <filename>image.ext</filename>
+        <path>/path/to/dataset-dir/data/image.ext</path>
+        <source>
+            <database></database>
+        </source>
+        <size>
+            <width>640</width>
+            <height>480</height>
+            <depth>3</depth>
+        </size>
+        <segmented></segmented>
+        <object>
+            <name>cat</name>
+            <pose></pose>
+            <truncated>0</truncated>
+            <difficult>0</difficult>
+            <occluded>0</occluded>
+            <bndbox>
+                <xmin>256</xmin>
+                <ymin>200</ymin>
+                <xmax>450</xmax>
+                <ymax>400</ymax>
+            </bndbox>
+        </object>
+        <object>
+            <name>dog</name>
+            <pose></pose>
+            <truncated>1</truncated>
+            <difficult>1</difficult>
+            <occluded>1</occluded>
+            <bndbox>
+                <xmin>128</xmin>
+                <ymin>100</ymin>
+                <xmax>350</xmax>
+                <ymax>300</ymax>
+            </bndbox>
+        </object>
+        ...
+    </annotation>
+    
+
+Samples with no values for certain attributes (like `pose` in the above example) are left empty.
+
+Unlabeled images have no corresponding file in `labels/`.
+
+Note
+
+See [`VOCDetectionDatasetExporter`](../api/fiftyone.utils.voc.html#fiftyone.utils.voc.VOCDetectionDatasetExporter "fiftyone.utils.voc.VOCDetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a VOC detection dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/voc-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.VOCDetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/voc-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.VOCDetectionDataset
+    
+
+You can also perform labels-only exports of VOC-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/voc-labels"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.VOCDetectionDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/voc-labels
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.VOCDetectionDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## KITTI#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections")
+
+The [`fiftyone.types.KITTIDetectionDataset`](../api/fiftyone.types.html#fiftyone.types.KITTIDetectionDataset "fiftyone.types.KITTIDetectionDataset") type represents a labeled dataset consisting of images and their associated object detections saved in [KITTI format](http://www.cvlibs.net/datasets/kitti/eval_object.php).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels/
+            <uuid1>.txt
+            <uuid2>.txt
+            ...
+    
+
+where the labels TXT files are space-delimited files where each row corresponds to an object and the 15 (and optional 16th score) columns have the following meanings:
+
+# of columns | Name | Description | Default  
+---|---|---|---  
+1 | type | The object label |   
+1 | truncated | A float in `[0, 1]`, where 0 is non-truncated and 1 is fully truncated. Here, truncation refers to the object leaving image boundaries | 0  
+1 | occluded | An int in `(0, 1, 2, 3)` indicating occlusion state, where:- 0 = fully visible- 1 = partly occluded- 2 = largely occluded- 3 = unknown | 0  
+1 | alpha | Observation angle of the object, in `[-pi, pi]` | 0  
+4 | bbox | 2D bounding box of object in the image in pixels, in the format `[xtl, ytl, xbr, ybr]` |   
+1 | dimensions | 3D object dimensions, in meters, in the format `[height, width, length]` | 0  
+1 | location | 3D object location `(x, y, z)` in camera coordinates (in meters) | 0  
+1 | rotation_y | Rotation around the y-axis in camera coordinates, in `[-pi, pi]` | 0  
+1 | score | `(optional)` A float confidence for the detection |   
+  
+The `default` column above indicates the default value that will be used when writing datasets in this type whose samples do not contain the necessary field(s).
+
+Unlabeled images have no corresponding file in `labels/`.
+
+Note
+
+See [`KITTIDetectionDatasetExporter`](../api/fiftyone.utils.kitti.html#fiftyone.utils.kitti.KITTIDetectionDatasetExporter "fiftyone.utils.kitti.KITTIDetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a KITTI detection dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/kitti-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.KITTIDetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/kitti-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.KITTIDetectionDataset
+    
+
+You can also perform labels-only exports of KITTI-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/kitti-labels"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.KITTIDetectionDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/kitti-labels
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.KITTIDetectionDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## YOLOv4#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines")
+
+The [`fiftyone.types.YOLOv4Dataset`](../api/fiftyone.types.html#fiftyone.types.YOLOv4Dataset "fiftyone.types.YOLOv4Dataset") type represents a labeled dataset consisting of images and their associated object detections saved in [YOLOv4 format](https://github.com/AlexeyAB/darknet).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        obj.names
+        images.txt
+        data/
+            <uuid1>.<ext>
+            <uuid1>.txt
+            <uuid2>.<ext>
+            <uuid2>.txt
+            ...
+    
+
+where `obj.names` contains the object class labels:
+    
+    
+    <label-0>
+    <label-1>
+    ...
+    
+
+and `images.txt` contains the list of images in `data/`:
+    
+    
+    data/<uuid1>.<ext>
+    data/<uuid2>.<ext>
+    ...
+    
+
+and the TXT files in `data/` are space-delimited files where each row corresponds to an object in the image of the same name, in one of the following formats:
+    
+    
+    # Detections
+    <target> <x-center> <y-center> <width> <height>
+    <target> <x-center> <y-center> <width> <height> <confidence>
+    
+    # Instance segmentations or polygons
+    <target> <x1> <y1> <x2> <y2> <x3> <y3> ...
+    
+
+where `<target>` is the zero-based integer index of the object class label from `obj.names`, all coordinates are expressed as relative values in `[0, 1] x [0, 1]`, and `<confidence>` is an optional confidence in `[0, 1]`, which will be included only if you pass the optional `include_confidence=True` flag to the export.
+
+Unlabeled images have no corresponding TXT file in `data/`.
+
+Note
+
+By default, only the bounding boxes of [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") fields are exported. However, you can choose to export instance segmentation masks as polygons by passing the optional `use_masks=True` argument to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export"):
+    
+    
+    # Export instance segmentation masks as polygons
+    dataset.export(
+        ...
+        dataset_type=fo.types.YOLOv4Dataset,
+        use_masks=True,
+        tolerance=2,  # optional tolerance when converting masks to polygons
+    )
+    
+
+See [`YOLOv4DatasetExporter`](../api/fiftyone.utils.yolo.html#fiftyone.utils.yolo.YOLOv4DatasetExporter "fiftyone.utils.yolo.YOLOv4DatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a YOLOv4 dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/yolov4-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.YOLOv4Dataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/yolov4-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.YOLOv4Dataset
+    
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports of YOLO-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/yolo-labels"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.YOLOv4Dataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/yolo-labels
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.YOLOv4Dataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## YOLOv5#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines")
+
+The [`fiftyone.types.YOLOv5Dataset`](../api/fiftyone.types.html#fiftyone.types.YOLOv5Dataset "fiftyone.types.YOLOv5Dataset") type represents a labeled dataset consisting of images and their associated object detections saved in [YOLOv5 format](https://github.com/ultralytics/yolov5).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        dataset.yaml
+        images/
+            train/
+                <uuid1>.<ext>
+                <uuid2>.<ext>
+                ...
+            val/
+                <uuid3>.<ext>
+                <uuid4>.<ext>
+                ...
+        labels/
+            train/
+                <uuid1>.txt
+                <uuid2>.txt
+                ...
+            val/
+                <uuid3>.txt
+                <uuid4>.txt
+                ...
+    
+
+where `dataset.yaml` contains the following information:
+    
+    
+    path: <dataset_dir>  # optional
+    train: ./images/train/
+    val: ./images/val/
+    
+    names:
+      0: list
+      1: of
+      2: classes
+      ...
+    
+
+See [this page](https://docs.ultralytics.com/datasets/detect) for a full description of the possible format of `dataset.yaml`. In particular, the dataset may contain one or more splits with arbitrary names, as the specific split being imported or exported is specified by the `split` argument to [`fiftyone.utils.yolo.YOLOv5DatasetExporter`](../api/fiftyone.utils.yolo.html#fiftyone.utils.yolo.YOLOv5DatasetExporter "fiftyone.utils.yolo.YOLOv5DatasetExporter"). Also, `dataset.yaml` can be located outside of `<dataset_dir>` as long as the optional `path` is provided.
+
+The TXT files in `labels/` are space-delimited files where each row corresponds to an object in the image of the same name, in one of the following formats:
+    
+    
+    # Detections
+    <target> <x-center> <y-center> <width> <height>
+    <target> <x-center> <y-center> <width> <height> <confidence>
+    
+    # Instance segmentations or polygons
+    <target> <x1> <y1> <x2> <y2> <x3> <y3> ...
+    
+
+where `<target>` is the zero-based integer index of the object class label from `names`, all coordinates are expressed as relative values in `[0, 1] x [0, 1]`, and `<confidence>` is an optional confidence in `[0, 1]`, which will be included only if you pass the optional `include_confidence=True` flag to the export.
+
+Unlabeled images have no corresponding TXT file in `labels/`. The label file path for each image is obtained by replacing `images/` with `labels/` in the respective image path.
+
+Note
+
+By default, only the bounding boxes of [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections") fields are exported. However, you can choose to export instance segmentation masks as polygons by passing the optional `use_masks=True` argument to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export"):
+    
+    
+    # Export instance segmentation masks as polygons
+    dataset.export(
+        ...
+        dataset_type=fo.types.YOLOv5Dataset,
+        use_masks=True,
+        tolerance=2,  # optional tolerance when converting masks to polygons
+    )
+    
+
+See [`YOLOv5DatasetExporter`](../api/fiftyone.utils.yolo.html#fiftyone.utils.yolo.YOLOv5DatasetExporter "fiftyone.utils.yolo.YOLOv5DatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a YOLOv5 dataset in the above format as follows:
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/yolov5-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The splits to export
+     7splits = ["train", "val"]
+     8
+     9# All splits must use the same classes list
+    10classes = ["list", "of", "classes"]
+    11
+    12# The dataset or view to export
+    13# We assume the dataset uses sample tags to encode the splits to export
+    14dataset_or_view = fo.load_dataset(...)
+    15
+    16# Export the splits
+    17for split in splits:
+    18    split_view = dataset_or_view.match_tags(split)
+    19    split_view.export(
+    20        export_dir=export_dir,
+    21        dataset_type=fo.types.YOLOv5Dataset,
+    22        label_field=label_field,
+    23        split=split,
+    24        classes=classes,
+    25    )
+    
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports of YOLO-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/yolo-labels"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.YOLOv5Dataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+
+## FiftyOne Object Detection#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections")
+
+The [`fiftyone.types.FiftyOneImageDetectionDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneImageDetectionDataset "fiftyone.types.FiftyOneImageDetectionDataset") type represents a labeled dataset consisting of images and their associated object detections stored in a simple JSON format.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels.json
+    
+
+where `labels.json` is a JSON file in the following format:
+    
+    
+    {
+        "classes": [
+            <labelA>,
+            <labelB>,
+            ...
+        ],
+        "labels": {
+            <uuid1>: [
+                {
+                    "label": <target>,
+                    "bounding_box": [
+                        <top-left-x>, <top-left-y>, <width>, <height>
+                    ],
+                    "confidence": <optional-confidence>,
+                    "attributes": {
+                        <optional-name>: <optional-value>,
+                        ...
+                    }
+                },
+                ...
+            ],
+            <uuid2>: [
+                ...
+            ],
+            ...
+        }
+    }
+    
+
+and where the bounding box coordinates are expressed as relative values in `[0, 1] x [0, 1]`.
+
+If the `classes` field is included in the JSON, the `target` values are class IDs that are mapped to class label strings via `classes[target]`. If no `classes` are included, then the `target` values directly store the label strings.
+
+The target value in `labels` for unlabeled images is `None`.
+
+By default, confidences and any additional dynamic attributes of your detections will be automatically included in the export. However, you can provide the optional `include_confidence` and `include_attributes` parameters to customize this behavior.
+
+Note
+
+See [`FiftyOneImageDetectionDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneImageDetectionDatasetExporter "fiftyone.utils.data.exporters.FiftyOneImageDetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as an image detection dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.FiftyOneImageDetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/image-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageDetectionDataset
+    
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports in this format by providing the `labels_path` parameter instead of `export_dir` to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a location to write (only) the labels.
+
+Note
+
+You can optionally include the `export_media=False` option to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to make it explicit that you only wish to export labels, although this will be inferred if you do not provide an `export_dir` or `data_path`.
+
+By default, the filenames of your images will be used as keys in the exported labels. However, you can also provide the optional `rel_dir` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a prefix to strip from each image path to generate a key for the image. This argument allows for populating nested subdirectories that match the shape of the input paths.
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels using the basename of each image as keys
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.FiftyOneImageDetectionDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    15
+    16# Export labels using the relative path of each image with respect to
+    17# the given `rel_dir` as keys
+    18dataset_or_view.export(
+    19    dataset_type=fo.types.FiftyOneImageDetectionDataset,
+    20    labels_path=labels_path,
+    21    label_field=label_field,
+    22    rel_dir="/common/images/dir",
+    23)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels using the basename of each image as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageDetectionDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+    # Export labels using the relative path of each image with respect to
+    # the given `rel_dir` as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageDetectionDataset \
+        --kwargs \
+            labels_path=$LABELS_PATH \
+            rel_dir=/common/images/dir
+    
+
+## FiftyOne Temporal Detection#
+
+Supported label types
+
+[`TemporalDetections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.TemporalDetections "fiftyone.core.labels.TemporalDetections")
+
+The [`fiftyone.types.FiftyOneTemporalDetectionDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneTemporalDetectionDataset "fiftyone.types.FiftyOneTemporalDetectionDataset") type represents a labeled dataset consisting of videos and their associated temporal detections stored in a simple JSON format.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels.json
+    
+
+where `labels.json` is a JSON file in the following format:
+    
+    
+    {
+        "classes": [
+            "<labelA>",
+            "<labelB>",
+            ...
+        ],
+        "labels": {
+            "<uuid1>": [
+                {
+                    "label": <target>,
+                    "support": [<first-frame>, <last-frame>],
+                    "confidence": <optional-confidence>,
+                    "attributes": {
+                        <optional-name>: <optional-value>,
+                        ...
+                    }
+                },
+                {
+                    "label": <target>,
+                    "support": [<first-frame>, <last-frame>],
+                    "confidence": <optional-confidence>,
+                    "attributes": {
+                        <optional-name>: <optional-value>,
+                        ...
+                    }
+                },
+                ...
+            ],
+            "<uuid2>": [
+                {
+                    "label": <target>,
+                    "timestamps": [<start-timestamp>, <stop-timestamp>],
+                    "confidence": <optional-confidence>,
+                    "attributes": {
+                        <optional-name>: <optional-value>,
+                        ...
+                    }
+                },
+                {
+                    "label": <target>,
+                    "timestamps": [<start-timestamp>, <stop-timestamp>],
+                    "confidence": <optional-confidence>,
+                    "attributes": {
+                        <optional-name>: <optional-value>,
+                        ...
+                    }
+                },
+            ],
+            ...
+        }
+    }
+    
+
+By default, the `support` keys will be populated with the `[first, last]` frame numbers of the detections, but you can pass the `use_timestamps=True` key during export to instead populate the `timestamps` keys with the `[start, stop]` timestamps of the detections, in seconds.
+
+If the `classes` field is included in the JSON, the `target` values are class IDs that are mapped to class label strings via `classes[target]`. If no `classes` are included, then the `target` values directly store the label strings.
+
+The target value in `labels` for unlabeled videos is `None`.
+
+By default, confidences and any additional dynamic attributes of your detections will be automatically included in the export. However, you can provide the optional `include_confidence` and `include_attributes` parameters to customize this behavior.
+
+Note
+
+See [`FiftyOneTemporalDetectionDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneTemporalDetectionDatasetExporter "fiftyone.utils.data.exporters.FiftyOneTemporalDetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a temporal detection dataset stored on disk in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/temporal-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.FiftyOneTemporalDetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/temporal-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneTemporalDetectionDataset
+    
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+You can also perform labels-only exports in this format by providing the `labels_path` parameter instead of `export_dir` to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a location to write (only) the labels.
+
+Note
+
+You can optionally include the `export_media=False` option to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to make it explicit that you only wish to export labels, although this will be inferred if you do not provide an `export_dir` or `data_path`.
+
+By default, the filenames of your images will be used as keys in the exported labels. However, you can also provide the optional `rel_dir` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to specify a prefix to strip from each image path to generate a key for the image. This argument allows for populating nested subdirectories that match the shape of the input paths.
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels using the basename of each image as keys
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.FiftyOneTemporalDetectionDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    15
+    16# Export labels using the relative path of each image with respect to
+    17# the given `rel_dir` as keys
+    18dataset_or_view.export(
+    19    dataset_type=fo.types.FiftyOneTemporalDetectionDataset,
+    20    labels_path=labels_path,
+    21    label_field=label_field,
+    22    rel_dir="/common/images/dir",
+    23)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels using the basename of each image as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneTemporalDetectionDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+    # Export labels using the relative path of each image with respect to
+    # the given `rel_dir` as keys
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneTemporalDetectionDataset \
+        --kwargs \
+            labels_path=$LABELS_PATH \
+            rel_dir=/common/images/dir
+    
+
+## TF Object Detection#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections")
+
+The [`fiftyone.types.TFObjectDetectionDataset`](../api/fiftyone.types.html#fiftyone.types.TFObjectDetectionDataset "fiftyone.types.TFObjectDetectionDataset") type represents a labeled dataset consisting of images and their associated object detections stored as [TFRecords](https://www.tensorflow.org/tutorials/load_data/tfrecord) in [TF Object Detection API format](https://github.com/tensorflow/models/blob/master/research/object_detection).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        tf.records-?????-of-?????
+    
+
+where the features of the (possibly sharded) TFRecords are stored in the following format:
+    
+    
+    {
+        # Image dimensions
+        "image/height": tf.io.FixedLenFeature([], tf.int64),
+        "image/width": tf.io.FixedLenFeature([], tf.int64),
+    
+        # Image filename is used for both of these when writing
+        "image/filename": tf.io.FixedLenFeature([], tf.string),
+        "image/source_id": tf.io.FixedLenFeature([], tf.string),
+    
+        # Encoded image bytes
+        "image/encoded": tf.io.FixedLenFeature([], tf.string),
+    
+        # Image format, either `jpeg` or `png`
+        "image/format": tf.io.FixedLenFeature([], tf.string),
+    
+        # Normalized bounding box coordinates in `[0, 1]`
+        "image/object/bbox/xmin": tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        ),
+        "image/object/bbox/xmax": tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        ),
+        "image/object/bbox/ymin": tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        ),
+        "image/object/bbox/ymax": tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        ),
+    
+        # Class label string
+        "image/object/class/text": tf.io.FixedLenSequenceFeature(
+            [], tf.string, allow_missing=True
+        ),
+    
+        # Integer class ID
+        "image/object/class/label": tf.io.FixedLenSequenceFeature(
+            [], tf.int64, allow_missing=True
+        ),
+    }
+    
+
+The TFRecords for unlabeled samples do not contain `image/object/*` features.
+
+Note
+
+See [`TFObjectDetectionDatasetExporter`](../api/fiftyone.utils.tf.html#fiftyone.utils.tf.TFObjectDetectionDatasetExporter "fiftyone.utils.tf.TFObjectDetectionDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a directory of TFRecords in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/tf-object-detection-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.TFObjectDetectionDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/tf-object-detection-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.TFObjectDetectionDataset
+    
+
+Note
+
+You can provide the `tf_records_path` argument instead of `export_dir` in the examples above to directly specify the path to the TFRecord(s) to write. See [`TFObjectDetectionDatasetExporter`](../api/fiftyone.utils.tf.html#fiftyone.utils.tf.TFObjectDetectionDatasetExporter "fiftyone.utils.tf.TFObjectDetectionDatasetExporter") for details.
+
+Note
+
+You can pass the optional `classes` parameter to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to explicitly define the class list to use in the exported labels. Otherwise, the strategy outlined in this section will be used to populate the class list.
+
+## Image Segmentation Directory#
+
+Supported label types
+
+[`Segmentation`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Segmentation "fiftyone.core.labels.Segmentation"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines")
+
+The [`fiftyone.types.ImageSegmentationDirectory`](../api/fiftyone.types.html#fiftyone.types.ImageSegmentationDirectory "fiftyone.types.ImageSegmentationDirectory") type represents a labeled dataset consisting of images and their associated semantic segmentations stored as images on disk.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <filename1>.<ext>
+            <filename2>.<ext>
+            ...
+        labels/
+            <filename1>.<ext>
+            <filename2>.<ext>
+            ...
+    
+
+where `labels/` contains the semantic segmentations stored as images.
+
+By default, the masks will be stored as PNG images, but you can customize this by passing the optional `mask_format` parameter. The masks will be stored as 8 bit images if they contain at most 256 classes, otherwise 16 bits will be used.
+
+Unlabeled images have no corresponding file in `labels/`.
+
+Note
+
+See [`ImageSegmentationDirectoryExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.ImageSegmentationDirectoryExporter "fiftyone.utils.data.exporters.ImageSegmentationDirectoryExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as an image segmentation dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-segmentation-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.ImageSegmentationDirectory,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/image-segmentation-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.ImageSegmentationDirectory
+    
+
+You can also export only the segmentation masks by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/segmentation-masks"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.ImageSegmentationDirectory,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/segmentation-masks
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.ImageSegmentationDirectory \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## CVAT Image#
+
+Supported label types
+
+[`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")
+
+The [`fiftyone.types.CVATImageDataset`](../api/fiftyone.types.html#fiftyone.types.CVATImageDataset "fiftyone.types.CVATImageDataset") type represents a labeled dataset consisting of images and their associated tags and object detections stored in [CVAT image format](https://github.com/opencv/cvat).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels.xml
+    
+
+where `labels.xml` is an XML file in the following format:
+    
+    
+    <?xml version="1.0" encoding="utf-8"?>
+    <annotations>
+        <version>1.1</version>
+        <meta>
+            <task>
+                <id>0</id>
+                <name>task-name</name>
+                <size>51</size>
+                <mode>annotation</mode>
+                <overlap></overlap>
+                <bugtracker></bugtracker>
+                <flipped>False</flipped>
+                <created>2017-11-20 11:51:51.000000+00:00</created>
+                <updated>2017-11-20 11:51:51.000000+00:00</updated>
+                <labels>
+                    <label>
+                        <name>car</name>
+                        <attributes>
+                            <attribute>
+                                <name>type</name>
+                                <values>coupe\\nsedan\\ntruck</values>
+                            </attribute>
+                            ...
+                        </attributes>
+                    </label>
+                    <label>
+                        <name>traffic_line</name>
+                        <attributes>
+                            <attribute>
+                                <name>color</name>
+                                <values>white\\nyellow</values>
+                            </attribute>
+                            ...
+                        </attributes>
+                    </label>
+                    ...
+                </labels>
+            </task>
+            <segments>
+                <segment>
+                    <id>0</id>
+                    <start>0</start>
+                    <stop>50</stop>
+                    <url></url>
+                </segment>
+            </segments>
+            <owner>
+                <username></username>
+                <email></email>
+            </owner>
+            <dumped>2017-11-20 11:51:51.000000+00:00</dumped>
+        </meta>
+        <image id="0" name="<uuid1>.<ext>" width="640" height="480">
+            <tag label="urban"></tag>
+            ...
+            <box label="car" xtl="100" ytl="50" xbr="325" ybr="190" occluded="0">
+                <attribute name="type">sedan</attribute>
+                ...
+            </box>
+            ...
+            <polygon label="car" points="561.30,916.23;561.30,842.77;...;560.20,966.67" occluded="0">
+                <attribute name="make">Honda</attribute>
+                ...
+            </polygon>
+            ...
+            <polyline label="traffic_line" points="462.10,0.00;126.80,1200.00" occluded="0">
+                <attribute name="color">yellow</attribute>
+                ...
+            </polyline>
+            ...
+            <points label="wheel" points="574.90,939.48;1170.16,907.90;...;600.16,459.48" occluded="0">
+                <attribute name="location">front_driver_side</attribute>
+                ...
+            </points>
+            ...
+        </image>
+        ...
+        <image id="50" name="<uuid51>.<ext>" width="640" height="480">
+            ...
+        </image>
+    </annotations>
+    
+
+Unlabeled images have no corresponding `image` tag in `labels.xml`.
+
+The `name` field of the `<image>` tags in the labels file encodes the location of the corresponding images, which can be any of the following:
+
+  * The filename of an image in the `data/` folder
+
+  * A relative path like `path/to/filename.ext` specifying the relative path to the image in a nested subfolder of `data/`
+
+  * An absolute path to an image, which may or may not be in the `data/` folder
+
+
+
+
+Note
+
+See [`CVATImageDatasetExporter`](../api/fiftyone.utils.cvat.html#fiftyone.utils.cvat.CVATImageDatasetExporter "fiftyone.utils.cvat.CVATImageDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a CVAT image dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/cvat-image-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.CVATImageDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/cvat-image-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.CVATImageDataset
+    
+
+You can also perform labels-only exports of CVAT-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/cvat-labels.xml"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.CVATImageDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/cvat-labels.xml
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.CVATImageDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## CVAT Video#
+
+Supported label types
+
+[`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")
+
+The [`fiftyone.types.CVATVideoDataset`](../api/fiftyone.types.html#fiftyone.types.CVATVideoDataset "fiftyone.types.CVATVideoDataset") type represents a labeled dataset consisting of videos and their associated object detections stored in [CVAT video format](https://github.com/opencv/cvat).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels/
+            <uuid1>.xml
+            <uuid2>.xml
+            ...
+    
+
+where the labels XML files are stored in the following format:
+    
+    
+    <?xml version="1.0" encoding="utf-8"?>
+    <annotations>
+        <version>1.1</version>
+        <meta>
+            <task>
+                <id>task-id</id>
+                <name>task-name</name>
+                <size>51</size>
+                <mode>interpolation</mode>
+                <overlap></overlap>
+                <bugtracker></bugtracker>
+                <flipped>False</flipped>
+                <created>2017-11-20 11:51:51.000000+00:00</created>
+                <updated>2017-11-20 11:51:51.000000+00:00</updated>
+                <labels>
+                    <label>
+                        <name>car</name>
+                        <attributes>
+                            <attribute>
+                                <name>type</name>
+                                <values>coupe\\nsedan\\ntruck</values>
+                            </attribute>
+                            ...
+                        </attributes>
+                    </label>
+                    <label>
+                        <name>traffic_line</name>
+                        <attributes>
+                            <attribute>
+                                <name>color</name>
+                                <values>white\\nyellow</values>
+                            </attribute>
+                            ...
+                        </attributes>
+                    </label>
+                    ...
+                </labels>
+            </task>
+            <segments>
+                <segment>
+                    <id>0</id>
+                    <start>0</start>
+                    <stop>50</stop>
+                    <url></url>
+                </segment>
+            </segments>
+            <owner>
+                <username></username>
+                <email></email>
+            </owner>
+            <original_size>
+                <width>640</width>
+                <height>480</height>
+            </original_size>
+            <dumped>2017-11-20 11:51:51.000000+00:00</dumped>
+        </meta>
+        <track id="0" label="car">
+            <box frame="0" xtl="100" ytl="50" xbr="325" ybr="190" outside="0" occluded="0" keyframe="1">
+                <attribute name="type">sedan</attribute>
+                ...
+            </box>
+            ...
+        </track>
+        <track id="1" label="car">
+            <polygon frame="0" points="561.30,916.23;561.30,842.77;...;560.20,966.67" outside="0" occluded="0" keyframe="1">
+                <attribute name="make">Honda</attribute>
+                ...
+            </polygon>
+            ...
+        </track>
+        ...
+        <track id="10" label="traffic_line">
+            <polyline frame="10" points="462.10,0.00;126.80,1200.00" outside="0" occluded="0" keyframe="1">
+                <attribute name="color">yellow</attribute>
+                ...
+            </polyline>
+            ...
+        </track>
+        ...
+        <track id="88" label="wheel">
+            <points frame="176" points="574.90,939.48;1170.16,907.90;...;600.16,459.48" outside="0" occluded="0" keyframe="1">
+                <attribute name="location">front_driver_side</attribute>
+                ...
+            </points>
+            ...
+        </track>
+    </annotations>
+    
+
+Unlabeled videos have no corresponding file in `labels/`.
+
+Note
+
+See [`CVATVideoDatasetExporter`](../api/fiftyone.utils.cvat.html#fiftyone.utils.cvat.CVATVideoDatasetExporter "fiftyone.utils.cvat.CVATVideoDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a CVAT video dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/cvat-video-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.CVATVideoDataset,
+    13    frame_labels_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/cvat-video-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.CVATVideoDataset \
+        --kwargs frame_labels_field=$LABEL_FIELD
+    
+
+You can also perform labels-only exports of CVAT-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/cvat-labels"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.CVATVideoDataset,
+    12    labels_path=labels_path,
+    13    frame_labels_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/cvat-labels
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.CVATVideoDataset \
+        --kwargs frames_labels_path=$LABELS_PATH
+    
+
+## BDD#
+
+Supported label types
+
+[`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines")
+
+The [`fiftyone.types.BDDDataset`](../api/fiftyone.types.html#fiftyone.types.BDDDataset "fiftyone.types.BDDDataset") type represents a labeled dataset consisting of images and their associated multitask predictions saved in [Berkeley DeepDrive (BDD) format](http://bdd-data.berkeley.edu).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <filename0>.<ext>
+            <filename1>.<ext>
+            ...
+        labels.json
+    
+
+where `labels.json` is a JSON file in the following format:
+    
+    
+    [
+        {
+            "name": "<filename0>.<ext>",
+            "attributes": {
+                "scene": "city street",
+                "timeofday": "daytime",
+                "weather": "overcast"
+            },
+            "labels": [
+                {
+                    "id": 0,
+                    "category": "traffic sign",
+                    "manualAttributes": true,
+                    "manualShape": true,
+                    "attributes": {
+                        "occluded": false,
+                        "trafficLightColor": "none",
+                        "truncated": false
+                    },
+                    "box2d": {
+                        "x1": 1000.698742,
+                        "x2": 1040.626872,
+                        "y1": 281.992415,
+                        "y2": 326.91156
+                    },
+                    "score": 0.95
+                },
+                ...
+                {
+                    "id": 34,
+                    "category": "drivable area",
+                    "manualAttributes": true,
+                    "manualShape": true,
+                    "attributes": {
+                        "areaType": "direct"
+                    },
+                    "poly2d": [
+                        {
+                            "types": "LLLLCCC",
+                            "closed": true,
+                            "vertices": [
+                                [241.143645, 697.923453],
+                                [541.525255, 380.564983],
+                                ...
+                            ]
+                        }
+                    ],
+                    "score": 0.87
+                },
+                ...
+                {
+                    "id": 109356,
+                    "category": "lane",
+                    "attributes": {
+                        "laneDirection": "parallel",
+                        "laneStyle": "dashed",
+                        "laneType": "single white"
+                    },
+                    "manualShape": true,
+                    "manualAttributes": true,
+                    "poly2d": [
+                        {
+                            "types": "LL",
+                            "closed": false,
+                            "vertices": [
+                                [492.879546, 331.939543],
+                                [0, 471.076658],
+                                ...
+                            ]
+                        }
+                    ],
+                    "score": 0.98
+                },
+                ...
+            }
+        }
+        ...
+    ]
+    
+
+Unlabeled images have no corresponding entry in `labels.json`.
+
+The `name` attribute of the labels file encodes the location of the corresponding images, which can be any of the following:
+
+  * The filename of an image in the `data/` folder
+
+  * A relative path like `path/to/filename.ext` specifying the relative path to the image in a nested subfolder of `data/`
+
+  * An absolute path to an image, which may or may not be in the `data/` folder
+
+
+
+
+Note
+
+See [`BDDDatasetExporter`](../api/fiftyone.utils.bdd.html#fiftyone.utils.bdd.BDDDatasetExporter "fiftyone.utils.bdd.BDDDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a BDD dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/bdd-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.BDDDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/bdd-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.BDDDataset
+    
+
+You can also perform labels-only exports of BDD-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/bdd-labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.BDDDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/bdd-labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.BDDDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## CSV#
+
+The [`fiftyone.types.CSVDataset`](../api/fiftyone.types.html#fiftyone.types.CSVDataset "fiftyone.types.CSVDataset") type is a flexible CSV format that represents slice(s) of field values of a dataset as columns of a CSV file.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <filename1>.<ext>
+            <filename2>.<ext>
+            ...
+        labels.csv
+    
+
+where `labels.csv` is a CSV file in the following format:
+    
+    
+    field1,field2,field3,...
+    value1,value2,value3,...
+    value1,value2,value3,...
+    ...
+    
+
+where the columns of interest are specified via the `fields` parameter, and may contain any number of top-level or embedded fields such as strings, ints, floats, booleans, or lists of such values.
+
+List values are encoded as `"list,of,values"` with double quotes to escape the commas. Missing field values are encoded as empty cells.
+
+Note
+
+See [`CSVDatasetExporter`](../api/fiftyone.utils.csv.html#fiftyone.utils.csv.CSVDatasetExporter "fiftyone.utils.csv.CSVDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a CSV dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/csv-dataset"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir,
+    11    dataset_type=fo.types.CSVDataset,
+    12    fields=["list", "of", "fields"],
+    13)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/csv-dataset
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.CSVDataset \
+        --kwargs fields=list,of,fields
+    
+
+You can also directly export a CSV file of field values and absolute media paths without exporting the actual media files by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/labels.csv"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export labels with absolute media paths
+     9dataset_or_view.export(
+    10    dataset_type=fo.types.CSVDataset,
+    11    labels_path=labels_path,
+    12    fields=["list", "of", "fields"],
+    13    abs_paths=True,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/labels.csv
+    
+    # Export labels with absolute media paths
+    fiftyone datasets export $NAME \
+        --type fiftyone.types.CSVDataset \
+        --kwargs \
+            labels_path=$LABELS_PATH \
+            fields=list,of,fields \
+            abs_paths=True
+    
+
+## GeoJSON#
+
+The [`fiftyone.types.GeoJSONDataset`](../api/fiftyone.types.html#fiftyone.types.GeoJSONDataset "fiftyone.types.GeoJSONDataset") type represents a dataset consisting of images or videos and their associated geolocation data and optional properties stored in [GeoJSON format](https://en.wikipedia.org/wiki/GeoJSON).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <filename1>.<ext>
+            <filename2>.<ext>
+            ...
+        labels.json
+    
+
+where `labels.json` is a GeoJSON file containing a `FeatureCollection` in the following format:
+    
+    
+    {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [
+                        -73.99496451958454,
+                        40.66338032487842
+                    ]
+                },
+                "properties": {
+                    "filename": <filename1>.<ext>,
+                    ...
+                }
+            },
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [
+                        -73.80992143421788,
+                        40.65611832778962
+                    ]
+                },
+                "properties": {
+                    "filename": <filename2>.<ext>,
+                    ...
+                }
+            },
+            ...
+        ]
+    }
+    
+
+where the `geometry` field may contain any valid GeoJSON geometry object, and the `filename` property encodes the name of the corresponding media in the `data/` folder. The `filename` property can also be an absolute path, which may or may not be in the `data/` folder.
+
+Samples with no location data will have a null `geometry` field.
+
+The `properties` field of each feature can contain additional labels for each sample.
+
+Note
+
+See [`GeoJSONDatasetExporter`](../api/fiftyone.utils.geojson.html#fiftyone.utils.geojson.GeoJSONDatasetExporter "fiftyone.utils.geojson.GeoJSONDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a GeoJSON dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/geojson-dataset"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir,
+    11    dataset_type=fo.types.GeoJSONDataset,
+    12)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/geojson-dataset
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.GeoJSONDataset
+    
+
+You can also perform labels-only exports of GeoJSON-formatted labels by providing the `labels_path` parameter instead of `export_dir`:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3labels_path = "/path/for/geo-labels.json"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export labels
+    10dataset_or_view.export(
+    11    dataset_type=fo.types.GeoJSONDataset,
+    12    labels_path=labels_path,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    LABELS_PATH=/path/for/geo-labels.json
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export labels
+    fiftyone datasets export $NAME \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.GeoJSONDataset \
+        --kwargs labels_path=$LABELS_PATH
+    
+
+## FiftyOne Dataset#
+
+The [`fiftyone.types.FiftyOneDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneDataset "fiftyone.types.FiftyOneDataset") provides a disk representation of an entire [`Dataset`](../api/fiftyone.core.dataset.html#fiftyone.core.dataset.Dataset "fiftyone.core.dataset.Dataset") in a serialized JSON format along with its source media.
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        metadata.json
+        samples.json
+        data/
+            <filename1>.<ext>
+            <filename2>.<ext>
+            ...
+        annotations/
+            <anno_key1>.json
+            <anno_key2>.json
+            ...
+        brain/
+            <brain_key1>.json
+            <brain_key2>.json
+            ...
+        evaluations/
+            <eval_key1>.json
+            <eval_key2>.json
+            ...
+    
+
+where `metadata.json` is a JSON file containing metadata associated with the dataset, `samples.json` is a JSON file containing a serialized representation of the samples in the dataset, `annotations/` contains any serialized [`AnnotationResults`](../api/fiftyone.core.annotation.html#fiftyone.core.annotation.AnnotationResults "fiftyone.core.annotation.AnnotationResults"), `brain/` contains any serialized [`BrainResults`](../api/fiftyone.core.brain.html#fiftyone.core.brain.BrainResults "fiftyone.core.brain.BrainResults"), and `evaluations/` contains any serialized [`EvaluationResults`](../api/fiftyone.core.evaluation.html#fiftyone.core.evaluation.EvaluationResults "fiftyone.core.evaluation.EvaluationResults").
+
+Video datasets have an additional `frames.json` file that contains a serialized representation of the frame labels for each video in the dataset.
+
+Note
+
+See [`FiftyOneDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneDatasetExporter "fiftyone.utils.data.exporters.FiftyOneDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset to disk in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/fiftyone-dataset"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset
+     9dataset_or_view.export(
+    10    export_dir=export_dir,
+    11    dataset_type=fo.types.FiftyOneDataset,
+    12)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/fiftyone-dataset
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.FiftyOneDataset
+    
+
+You can export datasets in this format without copying the source media files by including `export_media=False` in your call to [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export").
+
+You can also pass `use_dirs=True` to export per-sample/frame JSON files rather than storing all samples/frames in single JSON files.
+
+By default, the absolute filepath of each image will be included in the export. However, if you want to re-import this dataset on a different machine with the source media files stored in a different root directory, you can include the optional `rel_dir` parameter to specify a common prefix to strip from each imageâs filepath, and then provide the new `rel_dir` when [importing the dataset](import_datasets.html#fiftyonedataset-import):
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/fiftyone-dataset"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset without copying the media files
+     9dataset_or_view.export(
+    10    export_dir=export_dir,
+    11    dataset_type=fo.types.FiftyOneDataset,
+    12    export_media=False,
+    13)
+    14
+    15# Export the dataset without media, including only the relative path of
+    16# each image with respect to the given `rel_dir` so that the dataset
+    17# can be imported with a different `rel_dir` prepended later
+    18dataset_or_view.export(
+    19    export_dir=export_dir,
+    20    dataset_type=fo.types.FiftyOneDataset,
+    21    export_media=False,
+    22    rel_dir="/common/images/dir",
+    23)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/fiftyone-dataset
+    
+    # Export the dataset without copying the media files
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.FiftyOneDataset \
+        --kwargs export_media=False
+    
+    # Export the dataset without media, including only the relative path of
+    # each image with respect to the given `rel_dir` so that the dataset
+    # can be imported with a different `rel_dir` prepended later
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --type fiftyone.types.FiftyOneDataset \
+        --kwargs \
+            export_media=False \
+            rel_dir=/common/images/dir
+    
+
+Note
+
+Exporting in [`fiftyone.types.FiftyOneDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneDataset "fiftyone.types.FiftyOneDataset") format as shown above using the `export_media=False` and `rel_dir` parameters is a convenient way to transfer datasets between work environments, since this enables you to store the media files wherever you wish in each environment and then simply provide the appropriate `rel_dir` value when [importing](import_datasets.html#fiftyonedataset-import) the dataset into FiftyOne in a new environment.
+
+You can also pass in a `chunk_size` parameter to create nested directories of media files with a maximum number of files per directory. This can be useful when exporting large datasets to avoid filesystem limits on the number of files in a single directory.
+
+As an example, the following code exports a dataset with a maximum of 1000 media files per directory:
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/fiftyone-dataset"
+     4
+     5# The dataset or view to export
+     6dataset_or_view = fo.load_dataset(...)
+     7
+     8# Export the dataset with a maximum of 1000 media files per directory
+     9dataset_or_view.export(
+    10    export_dir=export_dir,
+    11    dataset_type=fo.types.FiftyOneDataset,
+    12    chunk_size=1000,
+    13)
+    
+
+This will create a directory structure like the following:
+    
+    
+    <dataset_dir>/
+        metadata.json
+        samples.json
+        data/
+            data_0/
+                <filename1>.<ext>
+                <filename2>.<ext>
+                ...
+            data_1/
+                <filename1>.<ext>
+                <filename2>.<ext>
+            ...
+    
+
+## FiftyOne Image Labels#
+
+Supported label types
+
+[`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")
+
+The [`fiftyone.types.FiftyOneImageLabelsDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneImageLabelsDataset "fiftyone.types.FiftyOneImageLabelsDataset") type represents a labeled dataset consisting of images and their associated multitask predictions stored in [ETA ImageLabels format](https://github.com/voxel51/eta/blob/develop/docs/image_labels_guide.md).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels/
+            <uuid1>.json
+            <uuid2>.json
+            ...
+        manifest.json
+    
+
+where `manifest.json` is a JSON file in the following format:
+    
+    
+    {
+        "type": "eta.core.datasets.LabeledImageDataset",
+        "description": "",
+        "index": [
+            {
+                "data": "data/<uuid1>.<ext>",
+                "labels": "labels/<uuid1>.json"
+            },
+            {
+                "data": "data/<uuid2>.<ext>",
+                "labels": "labels/<uuid2>.json"
+            },
+            ...
+        ]
+    }
+    
+
+and where each labels JSON file is stored in [ETA ImageLabels format](https://github.com/voxel51/eta/blob/develop/docs/image_labels_guide.md).
+
+For unlabeled images, an empty `eta.core.image.ImageLabels` file is stored.
+
+Note
+
+See [`FiftyOneImageLabelsDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneImageLabelsDatasetExporter "fiftyone.utils.data.exporters.FiftyOneImageLabelsDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as an image labels dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/image-labels-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.FiftyOneImageLabelsDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/image-labels-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneImageLabelsDataset
+    
+
+## FiftyOne Video Labels#
+
+Supported label types
+
+[`Classifications`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Classifications "fiftyone.core.labels.Classifications"), [`Detections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Detections "fiftyone.core.labels.Detections"), [`TemporalDetections`](../api/fiftyone.core.labels.html#fiftyone.core.labels.TemporalDetections "fiftyone.core.labels.TemporalDetections"), [`Polylines`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Polylines "fiftyone.core.labels.Polylines"), [`Keypoints`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Keypoints "fiftyone.core.labels.Keypoints")
+
+The [`fiftyone.types.FiftyOneVideoLabelsDataset`](../api/fiftyone.types.html#fiftyone.types.FiftyOneVideoLabelsDataset "fiftyone.types.FiftyOneVideoLabelsDataset") type represents a labeled dataset consisting of videos and their associated labels stored in [ETA VideoLabels format](https://github.com/voxel51/eta/blob/develop/docs/video_labels_guide.md).
+
+Datasets of this type are exported in the following format:
+    
+    
+    <dataset_dir>/
+        data/
+            <uuid1>.<ext>
+            <uuid2>.<ext>
+            ...
+        labels/
+            <uuid1>.json
+            <uuid2>.json
+            ...
+        manifest.json
+    
+
+where `manifest.json` is a JSON file in the following format:
+    
+    
+    {
+        "type": "eta.core.datasets.LabeledVideoDataset",
+        "description": "",
+        "index": [
+            {
+                "data": "data/<uuid1>.<ext>",
+                "labels": "labels/<uuid1>.json"
+            },
+            {
+                "data": "data/<uuid2>.<ext>",
+                "labels": "labels/<uuid2>.json"
+            },
+            ...
+        ]
+    }
+    
+
+and where each labels JSON file is stored in [ETA VideoLabels format](https://github.com/voxel51/eta/blob/develop/docs/video_labels_guide.md).
+
+For unlabeled videos, an empty `eta.core.video.VideoLabels` file is stored.
+
+Note
+
+See [`FiftyOneVideoLabelsDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.FiftyOneVideoLabelsDatasetExporter "fiftyone.utils.data.exporters.FiftyOneVideoLabelsDatasetExporter") for parameters that can be passed to methods like [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") to customize the export of datasets of this type.
+
+You can export a FiftyOne dataset as a video labels dataset in the above format as follows:
+
+PythonCLI
+    
+    
+     1import fiftyone as fo
+     2
+     3export_dir = "/path/for/video-labels-dataset"
+     4label_field = "ground_truth"  # for example
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(
+    11    export_dir=export_dir,
+    12    dataset_type=fo.types.FiftyOneVideoLabelsDataset,
+    13    label_field=label_field,
+    14)
+    
+    
+    
+    NAME=my-dataset
+    EXPORT_DIR=/path/for/video-labels-dataset
+    LABEL_FIELD=ground_truth  # for example
+    
+    # Export the dataset
+    fiftyone datasets export $NAME \
+        --export-dir $EXPORT_DIR \
+        --label-field $LABEL_FIELD \
+        --type fiftyone.types.FiftyOneVideoLabelsDataset
+    
+
+## Custom formats#
+
+The [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") method provides an optional `dataset_exporter` keyword argument that can be used to export a dataset using any [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") instance.
+
+This means that you can define your own [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") class and then export a [`Dataset`](../api/fiftyone.core.dataset.html#fiftyone.core.dataset.Dataset "fiftyone.core.dataset.Dataset") or [`DatasetView`](../api/fiftyone.core.view.html#fiftyone.core.view.DatasetView "fiftyone.core.view.DatasetView") in your custom format using the following recipe:
+    
+    
+     1import fiftyone as fo
+     2
+     3# The dataset or view to export
+     4dataset_or_view = fo.load_dataset(...)
+     5
+     6# Create an instance of your custom dataset exporter
+     7exporter = CustomDatasetExporter(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(dataset_exporter=exporter, ...)
+    
+
+You can also define a custom [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") type, which enables you to export datasets in your custom format using the following recipe:
+    
+    
+     1import fiftyone as fo
+     2
+     3# The `fiftyone.types.Dataset` subclass for your custom dataset
+     4dataset_type = CustomDataset
+     5
+     6# The dataset or view to export
+     7dataset_or_view = fo.load_dataset(...)
+     8
+     9# Export the dataset
+    10dataset_or_view.export(dataset_type=dataset_type, ...)
+    
+
+### Writing a custom DatasetExporter#
+
+[`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") is an abstract interface; the concrete interface that you should implement is determined by the type of dataset that you are exporting.
+
+Generic datasetsBatch exportsUnlabeled image datasetsLabeled image datasetsUnlabeled video datasetsLabeled video datasetsGrouped datasets
+
+The [`GenericSampleDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter "fiftyone.utils.data.exporters.GenericSampleDatasetExporter") interface allows you to define exporters that take a sequence of arbitrary [`Sample`](../api/fiftyone.utils.data.html#fiftyone.utils.data.Sample "fiftyone.core.sample.Sample") objects as input.
+
+The pseudocode below provides a template for a custom [`GenericSampleDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter "fiftyone.utils.data.exporters.GenericSampleDatasetExporter"):
+    
+    
+     1import fiftyone.utils.data as foud
+     2
+     3class CustomGenericSampleDatasetExporter(foud.GenericSampleDatasetExporter):
+     4    """Custom exporter for generic sample datasets.
+     5
+     6    Args:
+     7        export_dir (None): the directory to write the export. This may be
+     8            optional for some exporters
+     9        **kwargs: additional keyword arguments for your exporter
+    10    """
+    11
+    12    def __init__(self, export_dir=None, **kwargs):
+    13        super().__init__(export_dir=export_dir)
+    14        # Your initialization here
+    15
+    16    def setup(self):
+    17        """Performs any necessary setup before exporting the first sample in
+    18        the dataset.
+    19
+    20        This method is called when the exporter's context manager interface is
+    21        entered, :func:`DatasetExporter.__enter__`.
+    22        """
+    23        # Your custom setup here
+    24        pass
+    25
+    26    def log_collection(self, sample_collection):
+    27        """Logs any relevant information about the
+    28        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+    29        be exported.
+    30
+    31        Subclasses can optionally implement this method if their export format
+    32        can record information such as the
+    33        :meth:`fiftyone.core.collections.SampleCollection.info` or
+    34        :meth:`fiftyone.core.collections.SampleCollection.classes` of the
+    35        collection being exported.
+    36
+    37        By convention, this method must be optional; i.e., if it is not called
+    38        before the first call to :meth:`export_sample`, then the exporter must
+    39        make do without any information about the
+    40        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+    41        available, for example, if the samples being exported are not stored in
+    42        a collection).
+    43
+    44        Args:
+    45            sample_collection: the
+    46                :class:`fiftyone.core.collections.SampleCollection` whose
+    47                samples will be exported
+    48        """
+    49        # Log any information from the sample collection here
+    50        pass
+    51
+    52    def export_sample(self, sample):
+    53        """Exports the given sample to the dataset.
+    54
+    55        Args:
+    56            sample: a :class:`fiftyone.core.sample.Sample`
+    57        """
+    58        # Export the provided sample
+    59        pass
+    60
+    61    def close(self, *args):
+    62        """Performs any necessary actions after the last sample has been
+    63        exported.
+    64
+    65        This method is called when the exporter's context manager interface is
+    66        exited, :func:`DatasetExporter.__exit__`.
+    67
+    68        Args:
+    69            *args: the arguments to :func:`DatasetExporter.__exit__`
+    70        """
+    71        # Your custom code here to complete the export
+    72        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`GenericSampleDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter "fiftyone.utils.data.exporters.GenericSampleDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomGenericSampleDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for sample in samples:
+            exporter.export_sample(sample)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter.setup "fiftyone.utils.data.exporters.GenericSampleDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter.close "fiftyone.utils.data.exporters.GenericSampleDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter.log_collection "fiftyone.utils.data.exporters.GenericSampleDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+Each sample is exported via the [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GenericSampleDatasetExporter.export_sample "fiftyone.utils.data.exporters.GenericSampleDatasetExporter.export_sample") method.
+
+The [`BatchDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter "fiftyone.utils.data.exporters.BatchDatasetExporter") interface allows you to define exporters that directly take a [`SampleCollection`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection "fiftyone.core.collections.SampleCollection") as input. This interface allows for greater efficiency for export formats that handle aggregating over the samples themselves.
+
+The pseudocode below provides a template for a custom [`BatchDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter "fiftyone.utils.data.exporters.BatchDatasetExporter"):
+    
+    
+     1import fiftyone.utils.data as foud
+     2
+     3class CustomBatchDatasetExporter(foud.BatchDatasetExporter):
+     4    """Custom batch exporter for datasets.
+     5
+     6    Args:
+     7        export_dir (None): the directory to write the export. This may be
+     8            optional for some exporters
+     9        **kwargs: additional keyword arguments for your exporter
+    10    """
+    11
+    12    def __init__(self, export_dir=None, **kwargs):
+    13        super().__init__(export_dir=export_dir)
+    14        # Your initialization here
+    15
+    16    def setup(self):
+    17        """Performs any necessary setup before exporting the dataset.
+    18
+    19        This method is called when the exporter's context manager interface is
+    20        entered, :func:`DatasetExporter.__enter__`.
+    21        """
+    22        # Your custom setup here
+    23        pass
+    24
+    25    def log_collection(self, sample_collection):
+    26        """Logs any relevant information about the
+    27        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+    28        be exported.
+    29
+    30        Subclasses can optionally implement this method if their export format
+    31        can record information such as the
+    32        :meth:`fiftyone.core.collections.SampleCollection.info` or
+    33        :meth:`fiftyone.core.collections.SampleCollection.classes` of the
+    34        collection being exported.
+    35
+    36        By convention, this method must be optional; i.e., if it is not called
+    37        before :meth:`export_samples`, then the exporter must make do without
+    38        any information about the
+    39        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+    40        available, for example, if the samples being exported are not stored in
+    41        a collection).
+    42
+    43        Args:
+    44            sample_collection: the
+    45                :class:`fiftyone.core.collections.SampleCollection` whose
+    46                samples will be exported
+    47        """
+    48        # Log any information from the sample collection here
+    49        pass
+    50
+    51    def export_samples(self, sample_collection, progress=None):
+    52        """Exports the given sample collection.
+    53
+    54        Args:
+    55            sample_collection: a
+    56                :class:`fiftyone.core.collections.SampleCollection`
+    57            progress (None): whether to render a progress bar (True/False), use
+    58                the default value ``fiftyone.config.show_progress_bars``
+    59                (None), or a progress callback function to invoke instead
+    60        """
+    61
+    62    def close(self, *args):
+    63        """Performs any necessary actions after the collection has been
+    64        exported.
+    65
+    66        This method is called when the exporter's context manager interface is
+    67        exited, :func:`DatasetExporter.__exit__`.
+    68
+    69        Args:
+    70            *args: the arguments to :func:`DatasetExporter.__exit__`
+    71        """
+    72        # Your custom code here to complete the export
+    73        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`BatchDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter "fiftyone.utils.data.exporters.BatchDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomBatchDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        exporter.export_samples(samples)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter.setup "fiftyone.utils.data.exporters.BatchDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter.close "fiftyone.utils.data.exporters.BatchDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter.log_collection "fiftyone.utils.data.exporters.BatchDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before the samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+The core export logic is invoked via the [`export_samples()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.BatchDatasetExporter.export_samples "fiftyone.utils.data.exporters.BatchDatasetExporter.export_samples") method.
+
+To define a custom exporter for unlabeled image datasets, implement the [`UnlabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter") interface.
+
+The pseudocode below provides a template for a custom [`UnlabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter"):
+    
+    
+     1import fiftyone.utils.data as foud
+     2
+     3class CustomUnlabeledImageDatasetExporter(foud.UnlabeledImageDatasetExporter):
+     4    """Custom exporter for unlabeled image datasets.
+     5
+     6    Args:
+     7        export_dir (None): the directory to write the export. This may be
+     8            optional for some exporters
+     9        **kwargs: additional keyword arguments for your exporter
+    10    """
+    11
+    12    def __init__(self, export_dir=None, **kwargs):
+    13        super().__init__(export_dir=export_dir)
+    14        # Your initialization here
+    15
+    16    @property
+    17    def requires_image_metadata(self):
+    18        """Whether this exporter requires
+    19        :class:`fiftyone.core.metadata.ImageMetadata` instances for each sample
+    20        being exported.
+    21        """
+    22        # Return True or False here
+    23        pass
+    24
+    25    def setup(self):
+    26        """Performs any necessary setup before exporting the first sample in
+    27        the dataset.
+    28
+    29        This method is called when the exporter's context manager interface is
+    30        entered, :func:`DatasetExporter.__enter__`.
+    31        """
+    32        # Your custom setup here
+    33        pass
+    34
+    35    def log_collection(self, sample_collection):
+    36        """Logs any relevant information about the
+    37        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+    38        be exported.
+    39
+    40        Subclasses can optionally implement this method if their export format
+    41        can record information such as the
+    42        :meth:`fiftyone.core.collections.SampleCollection.info` or
+    43        :meth:`fiftyone.core.collections.SampleCollection.classes` of the
+    44        collection being exported.
+    45
+    46        By convention, this method must be optional; i.e., if it is not called
+    47        before the first call to :meth:`export_sample`, then the exporter must
+    48        make do without any information about the
+    49        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+    50        available, for example, if the samples being exported are not stored in
+    51        a collection).
+    52
+    53        Args:
+    54            sample_collection: the
+    55                :class:`fiftyone.core.collections.SampleCollection` whose
+    56                samples will be exported
+    57        """
+    58        # Log any information from the sample collection here
+    59        pass
+    60
+    61    def export_sample(self, image_or_path, metadata=None):
+    62        """Exports the given sample to the dataset.
+    63
+    64        Args:
+    65            image_or_path: an image or the path to the image on disk
+    66            metadata (None): a :class:`fiftyone.core.metadata.ImageMetadata`
+    67                isinstance for the sample. Only required when
+    68                :meth:`requires_image_metadata` is ``True``
+    69        """
+    70        # Export the provided sample
+    71        pass
+    72
+    73    def close(self, *args):
+    74        """Performs any necessary actions after the last sample has been
+    75        exported.
+    76
+    77        This method is called when the exporter's context manager interface is
+    78        exited, :func:`DatasetExporter.__exit__`.
+    79
+    80        Args:
+    81            *args: the arguments to :func:`DatasetExporter.__exit__`
+    82        """
+    83        # Your custom code here to complete the export
+    84        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`UnlabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomUnlabeledImageDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for sample in samples:
+            image_path = sample.filepath
+    
+            metadata = sample.metadata
+            if exporter.requires_image_metadata and metadata is None:
+                metadata = fo.ImageMetadata.build_for(image_path)
+    
+            exporter.export_sample(image_path, metadata=metadata)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.setup "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.close "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.log_collection "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+The image in each [`Sample`](../api/fiftyone.utils.data.html#fiftyone.utils.data.Sample "fiftyone.core.sample.Sample") is exported via the [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.export_sample "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.export_sample") method.
+
+The [`requires_image_metadata`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.requires_image_metadata "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.requires_image_metadata") property of the exporter allows it to declare whether it requires [`ImageMetadata`](../api/fiftyone.core.metadata.html#fiftyone.core.metadata.ImageMetadata "fiftyone.core.metadata.ImageMetadata") instances for each image to be provided when [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.export_sample "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter.export_sample") is called. This allows for cases where metadata about of the image (e.g., its filename, encoding, shape, etc) are required in order to export the sample.
+
+To define a custom exporter for labeled image datasets, implement the [`LabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter "fiftyone.utils.data.exporters.LabeledImageDatasetExporter") interface.
+
+The pseudocode below provides a template for a custom [`LabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter "fiftyone.utils.data.exporters.LabeledImageDatasetExporter"):
+    
+    
+      1import fiftyone.utils.data as foud
+      2
+      3class CustomLabeledImageDatasetExporter(foud.LabeledImageDatasetExporter):
+      4    """Custom exporter for labeled image datasets.
+      5
+      6    Args:
+      7        export_dir (None): the directory to write the export. This may be
+      8            optional for some exporters
+      9        **kwargs: additional keyword arguments for your exporter
+     10    """
+     11
+     12    def __init__(self, export_dir=None, **kwargs):
+     13        super().__init__(export_dir=export_dir)
+     14        # Your initialization here
+     15
+     16    @property
+     17    def requires_image_metadata(self):
+     18        """Whether this exporter requires
+     19        :class:`fiftyone.core.metadata.ImageMetadata` instances for each sample
+     20        being exported.
+     21        """
+     22        # Return True or False here
+     23        pass
+     24
+     25    @property
+     26    def label_cls(self):
+     27        """The :class:`fiftyone.core.labels.Label` class(es) exported by this
+     28        exporter.
+     29
+     30        This can be any of the following:
+     31
+     32        -   a :class:`fiftyone.core.labels.Label` class. In this case, the
+     33            exporter directly exports labels of this type
+     34        -   a list or tuple of :class:`fiftyone.core.labels.Label` classes. In
+     35            this case, the exporter can export a single label field of any of
+     36            these types
+     37        -   a dict mapping keys to :class:`fiftyone.core.labels.Label` classes.
+     38            In this case, the exporter can handle label dictionaries with
+     39            value-types specified by this dictionary. Not all keys need be
+     40            present in the exported label dicts
+     41        -   ``None``. In this case, the exporter makes no guarantees about the
+     42            labels that it can export
+     43        """
+     44        # Return the appropriate value here
+     45        pass
+     46
+     47    def setup(self):
+     48        """Performs any necessary setup before exporting the first sample in
+     49        the dataset.
+     50
+     51        This method is called when the exporter's context manager interface is
+     52        entered, :func:`DatasetExporter.__enter__`.
+     53        """
+     54        # Your custom setup here
+     55        pass
+     56
+     57    def log_collection(self, sample_collection):
+     58        """Logs any relevant information about the
+     59        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+     60        be exported.
+     61
+     62        Subclasses can optionally implement this method if their export format
+     63        can record information such as the
+     64        :meth:`fiftyone.core.collections.SampleCollection.name` and
+     65        :meth:`fiftyone.core.collections.SampleCollection.info` of the
+     66        collection being exported.
+     67
+     68        By convention, this method must be optional; i.e., if it is not called
+     69        before the first call to :meth:`export_sample`, then the exporter must
+     70        make do without any information about the
+     71        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+     72        available, for example, if the samples being exported are not stored in
+     73        a collection).
+     74
+     75        Args:
+     76            sample_collection: the
+     77                :class:`fiftyone.core.collections.SampleCollection` whose
+     78                samples will be exported
+     79        """
+     80        # Log any information from the sample collection here
+     81        pass
+     82
+     83    def export_sample(self, image_or_path, label, metadata=None):
+     84        """Exports the given sample to the dataset.
+     85
+     86        Args:
+     87            image_or_path: an image or the path to the image on disk
+     88            label: an instance of :meth:`label_cls`, or a dictionary mapping
+     89                field names to :class:`fiftyone.core.labels.Label` instances,
+     90                or ``None`` if the sample is unlabeled
+     91            metadata (None): a :class:`fiftyone.core.metadata.ImageMetadata`
+     92                instance for the sample. Only required when
+     93                :meth:`requires_image_metadata` is ``True``
+     94        """
+     95        # Export the provided sample
+     96        pass
+     97
+     98    def close(self, *args):
+     99        """Performs any necessary actions after the last sample has been
+    100        exported.
+    101
+    102        This method is called when the exporter's context manager interface is
+    103        exited, :func:`DatasetExporter.__exit__`.
+    104
+    105        Args:
+    106            *args: the arguments to :func:`DatasetExporter.__exit__`
+    107        """
+    108        # Your custom code here to complete the export
+    109        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`LabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter "fiftyone.utils.data.exporters.LabeledImageDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomLabeledImageDatasetExporter(...)
+    label_field = ...
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for sample in samples:
+            image_path = sample.filepath
+    
+            metadata = sample.metadata
+            if exporter.requires_image_metadata and metadata is None:
+                metadata = fo.ImageMetadata.build_for(image_path)
+    
+            # Assumes single label field case
+            label = sample[label_field]
+    
+            exporter.export_sample(image_path, label, metadata=metadata)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.setup "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.close "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.log_collection "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+The image and corresponding [`Label`](../api/fiftyone.core.labels.html#fiftyone.core.labels.Label "fiftyone.core.labels.Label") in each [`Sample`](../api/fiftyone.utils.data.html#fiftyone.utils.data.Sample "fiftyone.core.sample.Sample") is exported via the [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.export_sample "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.export_sample") method.
+
+The [`label_cls`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.label_cls "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.label_cls") property of the exporter declares the type of label(s) that the dataset format expects.
+
+The [`requires_image_metadata`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.requires_image_metadata "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.requires_image_metadata") property of the exporter allows it to declare whether it requires [`ImageMetadata`](../api/fiftyone.core.metadata.html#fiftyone.core.metadata.ImageMetadata "fiftyone.core.metadata.ImageMetadata") instances for each image to be provided when [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter.export_sample "fiftyone.utils.data.exporters.LabeledImageDatasetExporter.export_sample") is called. This allows for cases where metadata about of the image (e.g., its filename, encoding, shape, etc) are required in order to export the sample.
+
+To define a custom exporter for unlabeled video datasets, implement the [`UnlabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter") interface.
+
+The pseudocode below provides a template for a custom [`UnlabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter"):
+    
+    
+     1import fiftyone.utils.data as foud
+     2
+     3class CustomUnlabeledVideoDatasetExporter(foud.UnlabeledVideoDatasetExporter):
+     4    """Custom exporter for unlabeled video datasets.
+     5
+     6    Args:
+     7        export_dir (None): the directory to write the export. This may be
+     8            optional for some exporters
+     9        **kwargs: additional keyword arguments for your exporter
+    10    """
+    11
+    12    def __init__(self, export_dir=None, **kwargs):
+    13        super().__init__(export_dir=export_dir)
+    14        # Your initialization here
+    15
+    16    @property
+    17    def requires_video_metadata(self):
+    18        """Whether this exporter requires
+    19        :class:`fiftyone.core.metadata.VideoMetadata` instances for each sample
+    20        being exported.
+    21        """
+    22        # Return True or False here
+    23        pass
+    24
+    25    def setup(self):
+    26        """Performs any necessary setup before exporting the first sample in
+    27        the dataset.
+    28
+    29        This method is called when the exporter's context manager interface is
+    30        entered, :func:`DatasetExporter.__enter__`.
+    31        """
+    32        # Your custom setup here
+    33        pass
+    34
+    35    def log_collection(self, sample_collection):
+    36        """Logs any relevant information about the
+    37        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+    38        be exported.
+    39
+    40        Subclasses can optionally implement this method if their export format
+    41        can record information such as the
+    42        :meth:`fiftyone.core.collections.SampleCollection.name` and
+    43        :meth:`fiftyone.core.collections.SampleCollection.info` of the
+    44        collection being exported.
+    45
+    46        By convention, this method must be optional; i.e., if it is not called
+    47        before the first call to :meth:`export_sample`, then the exporter must
+    48        make do without any information about the
+    49        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+    50        available, for example, if the samples being exported are not stored in
+    51        a collection).
+    52
+    53        Args:
+    54            sample_collection: the
+    55                :class:`fiftyone.core.collections.SampleCollection` whose
+    56                samples will be exported
+    57        """
+    58        # Log any information from the sample collection here
+    59        pass
+    60
+    61    def export_sample(self, video_path, metadata=None):
+    62        """Exports the given sample to the dataset.
+    63
+    64        Args:
+    65            video_path: the path to a video on disk
+    66            metadata (None): a :class:`fiftyone.core.metadata.VideoMetadata`
+    67                isinstance for the sample. Only required when
+    68                :meth:`requires_video_metadata` is ``True``
+    69        """
+    70        # Export the provided sample
+    71        pass
+    72
+    73    def close(self, *args):
+    74        """Performs any necessary actions after the last sample has been
+    75        exported.
+    76
+    77        This method is called when the exporter's context manager interface is
+    78        exited, :func:`DatasetExporter.__exit__`.
+    79
+    80        Args:
+    81            *args: the arguments to :func:`DatasetExporter.__exit__`
+    82        """
+    83        # Your custom code here to complete the export
+    84        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`UnlabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomUnlabeledVideoDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for sample in samples:
+            video_path = sample.filepath
+    
+            metadata = sample.metadata
+            if exporter.requires_video_metadata and metadata is None:
+                metadata = fo.VideoMetadata.build_for(video_path)
+    
+            exporter.export_sample(video_path, metadata=metadata)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.setup "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.close "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.log_collection "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+The video in each [`Sample`](../api/fiftyone.utils.data.html#fiftyone.utils.data.Sample "fiftyone.core.sample.Sample") is exported via the [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.export_sample "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.export_sample") method.
+
+The [`requires_video_metadata`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.requires_video_metadata "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.requires_video_metadata") property of the exporter allows it to declare whether it requires [`VideoMetadata`](../api/fiftyone.core.metadata.html#fiftyone.core.metadata.VideoMetadata "fiftyone.core.metadata.VideoMetadata") instances for each video to be provided when [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.export_sample "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter.export_sample") is called. This allows for cases where metadata about the video (e.g., its filename, encoding, shape, etc) are required in order to export the sample.
+
+To define a custom exporter for labeled video datasets, implement the [`LabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter") interface.
+
+The pseudocode below provides a template for a custom [`LabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter"):
+    
+    
+      1import fiftyone.utils.data as foud
+      2
+      3class CustomLabeledVideoDatasetExporter(foud.LabeledVideoDatasetExporter):
+      4    """Custom exporter for labeled video datasets.
+      5
+      6    Args:
+      7        export_dir (None): the directory to write the export. This may be
+      8            optional for some exporters
+      9        **kwargs: additional keyword arguments for your exporter
+     10    """
+     11
+     12    def __init__(self, export_dir=None, **kwargs):
+     13        super().__init__(export_dir=export_dir)
+     14        # Your initialization here
+     15
+     16    @property
+     17    def requires_video_metadata(self):
+     18        """Whether this exporter requires
+     19        :class:`fiftyone.core.metadata.VideoMetadata` instances for each sample
+     20        being exported.
+     21        """
+     22        # Return True or False here
+     23        pass
+     24
+     25    @property
+     26    def label_cls(self):
+     27        """The :class:`fiftyone.core.labels.Label` class(es) that can be
+     28        exported at the sample-level.
+     29
+     30        This can be any of the following:
+     31
+     32        -   a :class:`fiftyone.core.labels.Label` class. In this case, the
+     33            exporter directly exports sample-level labels of this type
+     34        -   a list or tuple of :class:`fiftyone.core.labels.Label` classes. In
+     35            this case, the exporter can export a single sample-level label field
+     36            of any of these types
+     37        -   a dict mapping keys to :class:`fiftyone.core.labels.Label` classes.
+     38            In this case, the exporter can export multiple label fields with
+     39            value-types specified by this dictionary. Not all keys need be
+     40            present in the exported sample-level labels
+     41        -   ``None``. In this case, the exporter makes no guarantees about the
+     42            sample-level labels that it can export
+     43        """
+     44        # Return the appropriate value here
+     45        pass
+     46
+     47    @property
+     48    def frame_labels_cls(self):
+     49        """The :class:`fiftyone.core.labels.Label` class(es) that can be
+     50        exported by this exporter at the frame-level.
+     51
+     52        This can be any of the following:
+     53
+     54        -   a :class:`fiftyone.core.labels.Label` class. In this case, the
+     55            exporter directly exports frame labels of this type
+     56        -   a list or tuple of :class:`fiftyone.core.labels.Label` classes. In
+     57            this case, the exporter can export a single frame label field of
+     58            any of these types
+     59        -   a dict mapping keys to :class:`fiftyone.core.labels.Label` classes.
+     60            In this case, the exporter can export multiple frame label fields
+     61            with value-types specified by this dictionary. Not all keys need be
+     62            present in the exported frame labels
+     63        -   ``None``. In this case, the exporter makes no guarantees about the
+     64            frame labels that it can export
+     65        """
+     66        # Return the appropriate value here
+     67        pass
+     68
+     69    def setup(self):
+     70        """Performs any necessary setup before exporting the first sample in
+     71        the dataset.
+     72
+     73        This method is called when the exporter's context manager interface is
+     74        entered, :func:`DatasetExporter.__enter__`.
+     75        """
+     76        # Your custom setup here
+     77        pass
+     78
+     79    def log_collection(self, sample_collection):
+     80        """Logs any relevant information about the
+     81        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+     82        be exported.
+     83
+     84        Subclasses can optionally implement this method if their export format
+     85        can record information such as the
+     86        :meth:`fiftyone.core.collections.SampleCollection.name` and
+     87        :meth:`fiftyone.core.collections.SampleCollection.info` of the
+     88        collection being exported.
+     89
+     90        By convention, this method must be optional; i.e., if it is not called
+     91        before the first call to :meth:`export_sample`, then the exporter must
+     92        make do without any information about the
+     93        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+     94        available, for example, if the samples being exported are not stored in
+     95        a collection).
+     96
+     97        Args:
+     98            sample_collection: the
+     99                :class:`fiftyone.core.collections.SampleCollection` whose
+    100                samples will be exported
+    101        """
+    102        # Log any information from the sample collection here
+    103        pass
+    104
+    105    def export_sample(self, video_path, label, frames, metadata=None):
+    106        """Exports the given sample to the dataset.
+    107
+    108        Args:
+    109            video_path: the path to a video on disk
+    110            label: an instance of :meth:`label_cls`, or a dictionary mapping
+    111                field names to :class:`fiftyone.core.labels.Label` instances,
+    112                or ``None`` if the sample has no sample-level labels
+    113            frames: a dictionary mapping frame numbers to dictionaries that map
+    114                field names to :class:`fiftyone.core.labels.Label` instances,
+    115                or ``None`` if the sample has no frame-level labels
+    116            metadata (None): a :class:`fiftyone.core.metadata.VideoMetadata`
+    117                instance for the sample. Only required when
+    118                :meth:`requires_video_metadata` is ``True``
+    119        """
+    120        # Export the provided sample
+    121        pass
+    122
+    123    def close(self, *args):
+    124        """Performs any necessary actions after the last sample has been
+    125        exported.
+    126
+    127        This method is called when the exporter's context manager interface is
+    128        exited, :func:`DatasetExporter.__exit__`.
+    129
+    130        Args:
+    131            *args: the arguments to :func:`DatasetExporter.__exit__`
+    132        """
+    133        # Your custom code here to complete the export
+    134        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`LabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomLabeledVideoDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for sample in samples:
+            video_path = sample.filepath
+    
+            metadata = sample.metadata
+            if exporter.requires_video_metadata and metadata is None:
+                metadata = fo.VideoMetadata.build_for(video_path)
+    
+            # Extract relevant sample-level labels to export
+            label = ...
+    
+            # Extract relevant frame-level labels to export
+            frames = ...
+    
+            exporter.export_sample(
+                video_path, label, frames, metadata=metadata
+            )
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.setup "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.close "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.log_collection "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+The video and its corresponding sample and frame-level labels are exported via the [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.export_sample "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.export_sample") method.
+
+The [`label_cls`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.label_cls "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.label_cls") property of the exporter declares the type of sample-level label(s) that the dataset format expects (if any), and the [`frame_labels_cls`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.frame_labels_cls "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.frame_labels_cls") property of the exporter declares the type of frame-level label(s) that the dataset format expects (if any),
+
+The [`requires_video_metadata`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.requires_video_metadata "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.requires_video_metadata") property of the exporter allows it to declare whether it requires [`VideoMetadata`](../api/fiftyone.core.metadata.html#fiftyone.core.metadata.VideoMetadata "fiftyone.core.metadata.VideoMetadata") instances for each video to be provided when [`export_sample()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.export_sample "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter.export_sample") is called. This allows for cases where metadata about the video (e.g., its filename, encoding, shape, etc) are required in order to export the sample.
+
+To define a custom exporter for grouped datasets, implement the [`GroupDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter "fiftyone.utils.data.exporters.GroupDatasetExporter") interface.
+
+The pseudocode below provides a template for a custom [`GroupDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter "fiftyone.utils.data.exporters.GroupDatasetExporter"):
+    
+    
+     1import fiftyone.utils.data as foud
+     2
+     3class CustomGroupDatasetExporter(foud.GroupDatasetExporter):
+     4    """Custom exporter for grouped datasets.
+     5
+     6    Args:
+     7        export_dir (None): the directory to write the export. This may be
+     8            optional for some exporters
+     9        **kwargs: additional keyword arguments for your exporter
+    10    """
+    11
+    12    def __init__(self, export_dir=None, **kwargs):
+    13        super().__init__(export_dir=export_dir)
+    14        # Your initialization here
+    15
+    16    def setup(self):
+    17        """Performs any necessary setup before exporting the first group in
+    18        the dataset.
+    19
+    20        This method is called when the exporter's context manager interface is
+    21        entered, :func:`DatasetExporter.__enter__`.
+    22        """
+    23        # Your custom setup here
+    24        pass
+    25
+    26    def log_collection(self, sample_collection):
+    27        """Logs any relevant information about the
+    28        :class:`fiftyone.core.collections.SampleCollection` whose samples will
+    29        be exported.
+    30
+    31        Subclasses can optionally implement this method if their export format
+    32        can record information such as the
+    33        :meth:`fiftyone.core.collections.SampleCollection.info` or
+    34        :meth:`fiftyone.core.collections.SampleCollection.classes` of the
+    35        collection being exported.
+    36
+    37        By convention, this method must be optional; i.e., if it is not called
+    38        before the first call to :meth:`export_group`, then the exporter must
+    39        make do without any information about the
+    40        :class:`fiftyone.core.collections.SampleCollection` (which may not be
+    41        available, for example, if the samples being exported are not stored in
+    42        a collection).
+    43
+    44        Args:
+    45            sample_collection: the
+    46                :class:`fiftyone.core.collections.SampleCollection` whose
+    47                samples will be exported
+    48        """
+    49        # Log any information from the sample collection here
+    50        pass
+    51
+    52    def export_group(self, group):
+    53        """Exports the given group to the dataset.
+    54
+    55        Args:
+    56            group: a dict mapping group slice names to
+    57                :class:`fiftyone.core.sample.Sample` instances
+    58        """
+    59        # Export the provided group
+    60        pass
+    61
+    62    def close(self, *args):
+    63        """Performs any necessary actions after the last group has been
+    64        exported.
+    65
+    66        This method is called when the exporter's context manager interface is
+    67        exited, :func:`DatasetExporter.__exit__`.
+    68
+    69        Args:
+    70            *args: the arguments to :func:`DatasetExporter.__exit__`
+    71        """
+    72        # Your custom code here to complete the export
+    73        pass
+    
+
+When [`export()`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.export "fiftyone.core.collections.SampleCollection.export") is called with a custom [`GroupDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter "fiftyone.utils.data.exporters.GroupDatasetExporter"), the export is effectively performed via the pseudocode below:
+    
+    
+    import fiftyone as fo
+    
+    samples = ...
+    exporter = CustomGroupDatasetExporter(...)
+    
+    with exporter:
+        exporter.log_collection(samples)
+    
+        for group in samples.iter_groups():
+            exporter.export_group(group)
+    
+
+Note that the exporter is invoked via its context manager interface, which automatically calls the [`setup()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter.setup "fiftyone.utils.data.exporters.GroupDatasetExporter.setup") and [`close()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter.close "fiftyone.utils.data.exporters.GroupDatasetExporter.close") methods of the exporter to handle setup/completion of the export.
+
+The [`log_collection()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter.log_collection "fiftyone.utils.data.exporters.GroupDatasetExporter.log_collection") method is called after the exporterâs context manager has been entered but before any samples have been exported. This method can optionally be implemented by exporters that store information such as the [`name`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.name "fiftyone.core.collections.SampleCollection.name") or [`info`](../api/fiftyone.core.collections.html#fiftyone.core.collections.SampleCollection.info "fiftyone.core.collections.SampleCollection.info") from the collection being exported.
+
+Each sample group is exported via the [`export_group()`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter.export_group "fiftyone.utils.data.exporters.GroupDatasetExporter.export_group") method.
+
+### Writing a custom Dataset type#
+
+FiftyOne provides the [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") type system so that dataset formats can be conveniently referenced by their type when reading/writing datasets on disk.
+
+The primary function of the [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") subclasses is to define the [`DatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.DatasetImporter "fiftyone.utils.data.importers.DatasetImporter") that should be used to read instances of the dataset from disk and the [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter") that should be used to write instances of the dataset to disk.
+
+See [this page](import_datasets.html#writing-a-custom-dataset-importer) for more information about defining custom [`DatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.DatasetImporter "fiftyone.utils.data.importers.DatasetImporter") classes.
+
+Custom dataset types can be declared by implementing the [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") subclass corresponding to the type of dataset that you are working with.
+
+Generic datasetsUnlabeled image datasetsLabeled image datasetsUnlabeled video datasetsLabeled video datasetsGrouped datasets
+
+The pseudocode below provides a template for a custom [`Dataset`](../api/fiftyone.types.html#fiftyone.types.Dataset "fiftyone.types.Dataset") subclass that represents a collection of arbitrary content:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomDataset(fot.Dataset):
+     4    """Custom dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.DatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.DatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom DatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.DatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.DatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom DatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents a dataset of arbitrary content, its importer should subclass from the base [`DatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.DatasetImporter "fiftyone.utils.data.importers.DatasetImporter"), and its exporter should subclass from the base [`DatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.DatasetExporter "fiftyone.utils.data.exporters.DatasetExporter").
+
+The pseudocode below provides a template for a custom [`UnlabeledImageDataset`](../api/fiftyone.types.html#fiftyone.types.UnlabeledImageDataset "fiftyone.types.UnlabeledImageDataset") subclass:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomUnlabeledImageDataset(fot.UnlabeledImageDataset):
+     4    """Custom unlabeled image dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.UnlabeledImageDatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.UnlabeledImageDatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom UnlabeledImageDatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom UnlabeledImageDatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents an unlabeled image dataset, its importer must be a subclass of [`UnlabeledImageDatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.UnlabeledImageDatasetImporter "fiftyone.utils.data.importers.UnlabeledImageDatasetImporter"), and its exporter must be a subclass of [`UnlabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter "fiftyone.utils.data.exporters.UnlabeledImageDatasetExporter").
+
+The pseudocode below provides a template for a custom [`LabeledImageDataset`](../api/fiftyone.types.html#fiftyone.types.LabeledImageDataset "fiftyone.types.LabeledImageDataset") subclass:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomLabeledImageDataset(fot.LabeledImageDataset):
+     4    """Custom labeled image dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.LabeledImageDatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.LabeledImageDatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom LabeledImageDatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.LabeledImageDatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.LabeledImageDatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom LabeledImageDatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents a labeled image dataset, its importer must be a subclass of [`LabeledImageDatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.LabeledImageDatasetImporter "fiftyone.utils.data.importers.LabeledImageDatasetImporter"), and its exporter must be a subclass of [`LabeledImageDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledImageDatasetExporter "fiftyone.utils.data.exporters.LabeledImageDatasetExporter").
+
+The pseudocode below provides a template for a custom [`UnlabeledVideoDataset`](../api/fiftyone.types.html#fiftyone.types.UnlabeledVideoDataset "fiftyone.types.UnlabeledVideoDataset") subclass:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomUnlabeledVideoDataset(fot.UnlabeledVideoDataset):
+     4    """Custom unlabeled video dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.UnlabeledVideoDatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.UnlabeledVideoDatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom UnlabeledVideoDatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom UnlabeledVideoDatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents an unlabeled video dataset, its importer must be a subclass of [`UnlabeledVideoDatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.UnlabeledVideoDatasetImporter "fiftyone.utils.data.importers.UnlabeledVideoDatasetImporter"), and its exporter must be a subclass of [`UnlabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter "fiftyone.utils.data.exporters.UnlabeledVideoDatasetExporter").
+
+The pseudocode below provides a template for a custom [`LabeledVideoDataset`](../api/fiftyone.types.html#fiftyone.types.LabeledVideoDataset "fiftyone.types.LabeledVideoDataset") subclass:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomLabeledVideoDataset(fot.LabeledVideoDataset):
+     4    """Custom labeled video dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.LabeledVideoDatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.LabeledVideoDatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom LabeledVideoDatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.LabeledVideoDatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.LabeledVideoDatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom LabeledVideoDatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents a labeled video dataset, its importer must be a subclass of [`LabeledVideoDatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.LabeledVideoDatasetImporter "fiftyone.utils.data.importers.LabeledVideoDatasetImporter"), and its exporter must be a subclass of [`LabeledVideoDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.LabeledVideoDatasetExporter "fiftyone.utils.data.exporters.LabeledVideoDatasetExporter").
+
+The pseudocode below provides a template for a custom [`GroupDataset`](../api/fiftyone.types.html#fiftyone.types.GroupDataset "fiftyone.types.GroupDataset") subclass:
+    
+    
+     1import fiftyone.types as fot
+     2
+     3class CustomGroupDataset(fot.GroupDataset):
+     4    """Custom grouped dataset type."""
+     5
+     6    def get_dataset_importer_cls(self):
+     7        """Returns the
+     8        :class:`fiftyone.utils.data.importers.GroupDatasetImporter`
+     9        class for importing datasets of this type from disk.
+    10
+    11        Returns:
+    12            a :class:`fiftyone.utils.data.importers.GroupDatasetImporter`
+    13            class
+    14        """
+    15        # Return your custom GroupDatasetImporter class here
+    16        pass
+    17
+    18    def get_dataset_exporter_cls(self):
+    19        """Returns the
+    20        :class:`fiftyone.utils.data.exporters.GroupDatasetExporter`
+    21        class for exporting datasets of this type to disk.
+    22
+    23        Returns:
+    24            a :class:`fiftyone.utils.data.exporters.GroupDatasetExporter`
+    25            class
+    26        """
+    27        # Return your custom GroupDatasetExporter class here
+    28        pass
+    
+
+Note that, as this type represents a grouped dataset, its importer must be a subclass of [`GroupDatasetImporter`](../api/fiftyone.utils.data.importers.html#fiftyone.utils.data.importers.GroupDatasetImporter "fiftyone.utils.data.importers.GroupDatasetImporter"), and its exporter must be a subclass of [`GroupDatasetExporter`](../api/fiftyone.utils.data.exporters.html#fiftyone.utils.data.exporters.GroupDatasetExporter "fiftyone.utils.data.exporters.GroupDatasetExporter").
+
+IN THIS ARTICLE 
