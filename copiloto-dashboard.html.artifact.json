@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "copiloto-dashboard.html",
+  "entry": "copiloto-dashboard.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-06-19T18:50:35.022Z",
+  "updatedAt": "2026-06-19T18:50:35.022Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}
