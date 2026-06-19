@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "COPILOTO — Panel de Monitoreo",
+  "entry": "copiloto-dashboard-2.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "primary": true,
+  "createdAt": "2026-06-19T18:55:33.063Z",
+  "updatedAt": "2026-06-19T18:55:33.121Z",
+  "sourceSkillId": "agent-browser",
+  "metadata": {
+    "identifier": "copiloto-dashboard",
+    "artifactType": "text/html",
+    "inferred": false
+  }
+}
