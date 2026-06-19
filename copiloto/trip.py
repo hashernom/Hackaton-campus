@@ -39,6 +39,22 @@ def primary_contact(trip):
     return contacts[0] if contacts else {"name": "Contacto", "chat_id": config.DEFAULT_CHAT_ID}
 
 
+def is_active():
+    """Hay un viaje activo si existe trip.json."""
+    return config.TRIP_FILE.exists()
+
+
+def end_trip():
+    """Finaliza el viaje actual (borra trip.json). Devuelve True si había uno."""
+    try:
+        if config.TRIP_FILE.exists():
+            config.TRIP_FILE.unlink()
+            return True
+    except Exception as e:
+        print(f"[trip][ERROR] no se pudo finalizar: {e}")
+    return False
+
+
 def _parse_contact(s):
     # formato "Nombre:chat_id"
     name, _, chat_id = s.partition(":")

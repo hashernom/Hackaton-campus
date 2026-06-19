@@ -15,7 +15,10 @@ Write-Host "`n==> Actualizando pip..." -ForegroundColor Cyan
 & $py -m pip install --upgrade pip --quiet
 
 Write-Host "`n==> Instalando capa core..." -ForegroundColor Cyan
-& $pip install pillow numpy python-dotenv requests pyttsx3 --quiet
+& $pip install pillow numpy python-dotenv requests pyttsx3 flask qrcode edge-tts --quiet
+
+Write-Host "`n==> Instalando almacenamiento de incidencias (Postgres / psycopg)..." -ForegroundColor Cyan
+& $pip install "psycopg[binary]" --quiet
 
 Write-Host "`n==> Instalando MediaPipe..." -ForegroundColor Cyan
 & $pip install mediapipe --quiet
@@ -32,8 +35,12 @@ Write-Host "`n==> Corrigiendo OpenCV (fiftyone instala headless, necesitamos GUI
 & $pip install --force-reinstall opencv-python --quiet
 
 Write-Host "`n==> Verificando imports..." -ForegroundColor Cyan
-& $py -c "import cv2, mediapipe, transformers, pyttsx3; print('  cv2:', cv2.__version__); print('  Todo OK')"
+& $py -c "import cv2, mediapipe, transformers, pyttsx3, flask; print('  cv2:', cv2.__version__); print('  Todo OK')"
 
 Write-Host "`n[OK] Instalacion completa. Ahora puedes ejecutar:" -ForegroundColor Green
 Write-Host "  copiloto\venv\Scripts\python.exe copiloto\trip.py --driver `"Tu Nombre`" --contact `"Contacto:`""
+Write-Host "`n  Modo web (navegador):"
+Write-Host "  copiloto\venv\Scripts\python.exe copiloto\server.py --l1 1.0 --l2 3.0"
+Write-Host "  -> abre http://localhost:5000"
+Write-Host "`n  Modo escritorio (ventana OpenCV):"
 Write-Host "  copiloto\venv\Scripts\python.exe copiloto\live_demo.py --l1 1.0 --l2 3.0"

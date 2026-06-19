@@ -7,6 +7,8 @@ Niveles:
 
 La voz corre en un hilo aparte para no congelar el bucle de video.
 """
+import os
+import tempfile
 import threading
 import time
 
@@ -19,18 +21,52 @@ except Exception:
     _HAS_TTS = False
 
 
-def speak(text):
-    """Reproduce voz sin bloquear. Si no hay TTS, no hace nada (silencioso)."""
-    if not _HAS_TTS:
-        return
+def _play_mp3_windows(path):
+    """Reproduce un mp3 en Windows vía MCI (ctypes), sin dependencias extra."""
+    from ctypes import windll
+    alias = f"cp_tts_{int(time.time() * 1000)}"
+    windll.winmm.mciSendStringW(f'open "{path}" type mpegvideo alias {alias}', None, 0, 0)
+    windll.winmm.mciSendStringW(f'play {alias} wait', None, 0, 0)
+    windll.winmm.mciSendStringW(f'close {alias}', None, 0, 0)
 
+
+def _speak_edge(text):
+    """Voz neural en español con edge-tts (online). Lanza excepción si falla."""
+    import asyncio
+    import edge_tts
+
+    path = os.path.join(tempfile.gettempdir(), f"cp_tts_{int(time.time() * 1000)}.mp3")
+
+    async def _gen():
+        await edge_tts.Communicate(text, config.VOICE_EDGE).save(path)
+
+    asyncio.run(_gen())
+    _play_mp3_windows(path)
+    try:
+        os.remove(path)
+    except Exception:
+        pass
+
+
+def speak(text):
+    """Reproduce voz en español sin bloquear el bucle de video.
+
+    Primero intenta edge-tts (voz neural española, online). Si falla (sin
+    internet), cae a pyttsx3 (voz local del sistema). Si nada hay, queda silencioso.
+    """
     def _run():
         try:
-            engine = pyttsx3.init()
-            engine.say(text)
-            engine.runAndWait()
+            _speak_edge(text)
+            return
         except Exception as e:
-            print(f"[voz][ERROR] {e}")
+            print(f"[voz] edge-tts no disponible ({e}); uso voz local.")
+        if _HAS_TTS:
+            try:
+                engine = pyttsx3.init()
+                engine.say(text)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"[voz][ERROR] {e}")
 
     threading.Thread(target=_run, daemon=True).start()
 

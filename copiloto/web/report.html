@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>COPILOTO — Reportar anomalía</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+  <div class="max-w-md mx-auto px-5 py-6">
+
+    <!-- Encabezado -->
+    <header class="flex items-center gap-3 mb-6">
+      <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-slate-800 font-bold">CP</div>
+      <div>
+        <h1 class="text-lg font-semibold tracking-wide">COPILOTO</h1>
+        <p class="text-xs text-slate-400">Reportar anomalía en carretera</p>
+      </div>
+    </header>
+
+    <!-- Captura de foto -->
+    <label for="photo" class="block">
+      <div id="dropzone" class="aspect-video rounded-2xl border-2 border-dashed border-slate-700 bg-slate-900 flex flex-col items-center justify-center text-slate-500 overflow-hidden">
+        <img id="preview" class="w-full h-full object-cover hidden" alt="vista previa" />
+        <div id="placeholder" class="flex flex-col items-center">
+          <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span class="mt-2 text-sm">Toca para tomar la foto</span>
+        </div>
+      </div>
+    </label>
+    <input id="photo" type="file" accept="image/*" capture="environment" class="hidden" />
+
+    <!-- Nombre de la anomalía + estimado en vivo -->
+    <div class="mt-5">
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">
+        Nombre de la anomalía (opcional)
+      </label>
+      <input id="name" type="text" placeholder="ej. vía cerrada, accidente, ponchadura…"
+             class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500" />
+      <div id="liveEstimate" class="mt-2 text-sm text-slate-400 hidden">
+        Demora estimada: <span id="liveDelay" class="font-mono font-bold text-amber-400"></span> min
+        <span id="liveType" class="text-slate-500"></span>
+      </div>
+    </div>
+
+    <!-- Enviar -->
+    <button id="send" class="mt-6 w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+      Analizar y reportar
+    </button>
+    <p id="hint" class="mt-2 text-center text-xs text-slate-500">Toma una foto o escribe el nombre de la anomalía.</p>
+
+    <!-- Resultado -->
+    <div id="result" class="mt-6 hidden">
+      <div class="p-5 rounded-2xl border border-slate-700 bg-slate-900">
+        <div class="flex items-center justify-between">
+          <span class="text-xs uppercase tracking-wider text-slate-500">Anomalía detectada</span>
+          <span id="rStatus" class="text-xs font-semibold px-2 py-0.5 rounded-full"></span>
+        </div>
+        <div id="rType" class="text-2xl font-bold mt-1 capitalize"></div>
+        <div id="rDesc" class="text-sm text-slate-400"></div>
+
+        <div class="grid grid-cols-2 gap-3 mt-4">
+          <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+            <div class="text-xs text-slate-500 uppercase">Demora estimada</div>
+            <div class="text-2xl font-mono font-bold text-amber-400"><span id="rDelay">0</span><span class="text-sm text-slate-500"> min</span></div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+            <div class="text-xs text-slate-500 uppercase">Confianza</div>
+            <div class="text-2xl font-mono font-bold"><span id="rConf">0</span><span class="text-sm text-slate-500">%</span></div>
+          </div>
+        </div>
+
+        <div id="rNotified" class="mt-3 text-sm hidden"></div>
+        <p class="mt-3 text-xs text-slate-500">¿No es correcto? Edita el nombre arriba y reenvía.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let lat = null, lng = null;
+
+    // Geolocalización (opcional)
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { lat = pos.coords.latitude; lng = pos.coords.longitude; },
+        () => {}, { timeout: 4000 }
+      );
+    }
+
+    // Vista previa de la foto
+    $("photo").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      $("preview").src = url;
+      $("preview").classList.remove("hidden");
+      $("placeholder").classList.add("hidden");
+    });
+
+    // Estimado de demora en vivo según el nombre escrito (con debounce)
+    let timer = null;
+    $("name").addEventListener("input", (e) => {
+      const name = e.target.value.trim();
+      clearTimeout(timer);
+      if (!name) { $("liveEstimate").classList.add("hidden"); return; }
+      timer = setTimeout(async () => {
+        try {
+          const r = await fetch(`/api/estimate?name=${encodeURIComponent(name)}`, {
+            headers: { "ngrok-skip-browser-warning": "true" },
+          });
+          const data = await r.json();
+          $("liveDelay").textContent = data.estimated_delay_min;
+          $("liveType").textContent = data.type ? `(${data.type.replace(/_/g, " ")})` : "(sin coincidencia)";
+          $("liveEstimate").classList.remove("hidden");
+        } catch (_) {}
+      }, 300);
+    });
+
+    // Enviar el reporte
+    $("send").addEventListener("click", async () => {
+      const file = $("photo").files[0];
+      const name = $("name").value.trim();
+      if (!file && !name) { $("hint").textContent = "Toma una foto o escribe el nombre."; return; }
+
+      $("send").disabled = true;
+      $("send").textContent = "Analizando…";
+
+      const fd = new FormData();
+      if (file) fd.append("photo", file);
+      if (name) fd.append("driver_input", name);
+      if (lat && lng) { fd.append("lat", lat); fd.append("lng", lng); }
+
+      try {
+        const r = await fetch("/api/incident", {
+          method: "POST",
+          body: fd,
+          headers: { "ngrok-skip-browser-warning": "true" },
+        });
+        const d = await r.json();
+        showResult(d);
+      } catch (err) {
+        $("hint").textContent = "Error de red. Intenta de nuevo.";
+      } finally {
+        $("send").disabled = false;
+        $("send").textContent = "Analizar y reportar";
+      }
+    });
+
+    function showResult(d) {
+      $("rType").textContent = (d.type || "sin clasificar").replace(/_/g, " ");
+      $("rDesc").textContent = d.description || "";
+      $("rDelay").textContent = d.estimated_delay_min ?? 0;
+      $("rConf").textContent = Math.round((d.confidence || 0) * 100);
+
+      const st = $("rStatus");
+      if (d.status === "auto") {
+        st.textContent = "REPORTADO";
+        st.className = "text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300";
+      } else {
+        st.textContent = "EN REVISIÓN";
+        st.className = "text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300";
+      }
+
+      const n = $("rNotified");
+      if (d.notified) {
+        n.textContent = "✓ Reporte enviado al contacto por Telegram.";
+        n.className = "mt-3 text-sm text-emerald-400";
+        n.classList.remove("hidden");
+      } else if (d.status === "auto") {
+        n.textContent = "Reporte registrado (Telegram no configurado).";
+        n.className = "mt-3 text-sm text-slate-400";
+        n.classList.remove("hidden");
+      } else {
+        n.classList.add("hidden");
+      }
+
+      $("result").classList.remove("hidden");
+      $("result").scrollIntoView({ behavior: "smooth" });
+    }
+  </script>
+</body>
+</html>

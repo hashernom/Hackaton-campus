@@ -9,6 +9,8 @@ copiloto/.env
 copiloto/trip.json
 copiloto/last_event.jpg
 copiloto/captures/
+copiloto/incidents/
+copiloto/incidents.db
 
 # modelos descargables (se obtienen en runtime)
 *.task
@@ -16,6 +18,9 @@ copiloto/captures/
 # FiftyOne / datasets locales
 .fiftyone/
 data/
+
+# binario de ngrok (local, no versionar)
+/ngrok.exe
 
 # SO
 .DS_Store

@@ -9,6 +9,13 @@ numpy
 python-dotenv
 requests
 pyttsx3
+flask
+qrcode
+edge-tts
+
+# --- Incidencias por foto: almacenamiento Postgres ---
+# Si no hay Postgres, la app cae a SQLite (stdlib) automáticamente.
+psycopg[binary]
 
 # --- Detección por puntos faciales (somnolencia EAR + distracción) ---
 # Funciona sin torch. Es el plan B robusto si el modelo HF no instala.

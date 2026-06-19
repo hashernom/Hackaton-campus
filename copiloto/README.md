@@ -57,18 +57,83 @@ copiloto\venv\Scripts\pip.exe install --force-reinstall opencv-python
 # 1) Registrar el viaje y el contacto de emergencia
 python copiloto/trip.py --driver "Juan Perez" --contact "Mama:123456789"
 
-# 2) Arrancar el copiloto en vivo
-python copiloto/live_demo.py
-#    Solo MediaPipe/EAR (sin torch):
-python copiloto/live_demo.py --no-model
-#    Ajustes de demo (dispara más rápido):
+# 2a) MODO WEB (navegador) — recomendado para la demo
+python copiloto/server.py
+#     -> abre http://localhost:5000
+#     Solo MediaPipe/EAR (sin torch) y umbrales rápidos:
+python copiloto/server.py --no-model --l1 1.0 --l2 3.0
+
+# 2b) MODO ESCRITORIO (ventana OpenCV) — alternativa offline
 python copiloto/live_demo.py --l1 1.0 --l2 3.0
 
 # 3) Validar el modelo con FiftyOne (dataset por carpetas de clase)
 python copiloto/validate_fiftyone.py --data ruta/al/dataset
 ```
 
-Salir de la ventana en vivo: tecla **q**.
+Salir: **Ctrl+C** (modo web) o tecla **q** (ventana de escritorio).
+
+> ⚠️ El backend toma la cámara: **no** corras `server.py` y `live_demo.py` a la vez.
+
+### Arquitectura del modo web
+
+```
+navegador (copiloto/web/index.html, React)
+   │  GET /            -> dashboard
+   │  GET /api/state   -> estado JSON (polling 300ms)
+   │  GET /video_feed  -> stream MJPEG de la cámara
+   │  GET /event.jpg   -> captura de la última emergencia
+   ▼
+Flask (server.py) ──► CopilotoEngine (engine.py, hilo de fondo)
+                         cámara → modelo HF + MediaPipe → escalado → notificación
+```
+
+El front es el mismo diseño hecho con Claude Design; `getState()` lee del backend.
+Para verlo con datos simulados (sin backend), abre `copiloto-dashboard-2.html`
+directamente, o pon `DEMO_MODE = true` en `copiloto/web/index.html`.
+
+## Incidencias por foto (QR + VLM + Postgres)
+
+Reporte de anomalías en carretera: el conductor escanea un **QR**, toma una **foto**
+desde el móvil, un **modelo VLM zero-shot** reconoce qué pasó y da un **estimado de
+demora**, se **guarda** (Postgres o SQLite) y se **avisa al contacto por Telegram**.
+
+```powershell
+# (Opcional) levantar Postgres; si no, se usa SQLite automáticamente
+docker compose -f copiloto/docker-compose.yml up -d
+#  y en .env:  DATABASE_URL=postgresql://copiloto:copiloto@localhost:5432/copiloto
+
+# Arrancar el servidor (escucha en 0.0.0.0 para que el móvil llegue)
+python copiloto/server.py
+#  Solo incidencias, sin usar la cámara:
+python copiloto/server.py --no-engine
+```
+
+1. En el dashboard, clic en **“Reportar anomalía (QR)”** → aparece el QR.
+2. El conductor lo **escanea** (móvil en la **misma WiFi**) → abre `/report`.
+3. Toma la foto + (opcional) escribe el nombre → ve el **tipo** y la **demora estimada**.
+4. La incidencia aparece en el **feed del dashboard** y llega el **reporte a Telegram**.
+
+> El móvil y la laptop deben estar en la misma red. Si la red del lugar aísla clientes,
+> usa un túnel y pásalo con `--public-url https://xxxx.ngrok.io`.
+
+```
+móvil ──QR──► /report ──foto──► POST /api/incident
+                                   │  incidents.classify_anomaly (CLIP zero-shot)
+                                   │  incidents.estimate_delay   (tipo→minutos)
+                                   ├─► db (Postgres/SQLite)
+                                   ├─► notifier (Telegram + foto)
+                                   └─► feed del dashboard (GET /api/incidents)
+```
+
+**Validación + cola de revisión humana (FiftyOne):**
+```powershell
+# Evaluar el clasificador sobre fotos etiquetadas por carpeta de clase
+python copiloto/validate_incidents_fiftyone.py --data ruta/al/dataset
+# Revisar las incidencias dudosas (status needs_review) en la App
+python copiloto/validate_incidents_fiftyone.py --review
+# Confirmar/corregir una incidencia tras revisarla
+python copiloto/validate_incidents_fiftyone.py --confirm 12 --as via_cerrada --by despacho
+```
 
 ## Guion de demo (el "momento mágico")
 

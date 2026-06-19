@@ -15,7 +15,6 @@ Uso:
 Salir: tecla q
 """
 import argparse
-import threading
 import time
 
 import cv2
@@ -23,45 +22,9 @@ import cv2
 import config
 import trip as trip_mod
 from alerts import Escalator
+from engine import ModelWorker  # clase compartida con el servidor web
 import notifier
 
-
-class ModelWorker:
-    """Corre el modelo HF en un hilo de fondo para no bloquear el video.
-
-    El bucle principal entrega el último cuadro con submit(); el worker
-    infiere a su propio ritmo (~5 fps en CPU) y publica el resultado.
-    """
-
-    def __init__(self, model):
-        self.model = model
-        self._frame = None
-        self._lock = threading.Lock()
-        self.label, self.score, self.risk = "-", 0.0, False
-        self._stop = False
-        self._t = threading.Thread(target=self._run, daemon=True)
-        self._t.start()
-
-    def submit(self, frame):
-        with self._lock:
-            self._frame = frame
-
-    def _run(self):
-        while not self._stop:
-            with self._lock:
-                f = None if self._frame is None else self._frame.copy()
-                self._frame = None
-            if f is None:
-                time.sleep(0.01)
-                continue
-            try:
-                lbl, sc = self.model.predict(f)
-                self.label, self.score, self.risk = lbl, sc, self.model.is_risk(lbl)
-            except Exception as e:
-                print(f"[worker] error de inferencia: {e}")
-
-    def stop(self):
-        self._stop = True
 
 GREEN = (60, 180, 75)
 ORANGE = (0, 140, 255)

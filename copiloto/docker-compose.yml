@@ -1,0 +1,25 @@
+# Servicio Postgres para almacenar incidencias/anomalías (caso empresarial).
+#
+# Levantar:   docker compose -f copiloto/docker-compose.yml up -d
+# Detener:    docker compose -f copiloto/docker-compose.yml down
+#
+# Luego define en copiloto/.env:
+#   DATABASE_URL=postgresql://copiloto:copiloto@localhost:5432/copiloto
+# Si NO defines DATABASE_URL, la app usa SQLite local automáticamente.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: copiloto-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: copiloto
+      POSTGRES_PASSWORD: copiloto
+      POSTGRES_DB: copiloto
+    ports:
+      - "5432:5432"
+    volumes:
+      - copiloto_pgdata:/var/lib/postgresql/data
+
+volumes:
+  copiloto_pgdata:
