@@ -1,0 +1,22 @@
+# entornos virtuales
+**/venv/
+.venv/
+__pycache__/
+*.pyc
+
+# secretos y artefactos de runtime
+copiloto/.env
+copiloto/trip.json
+copiloto/last_event.jpg
+copiloto/captures/
+
+# modelos descargables (se obtienen en runtime)
+*.task
+
+# FiftyOne / datasets locales
+.fiftyone/
+data/
+
+# SO
+.DS_Store
+Thumbs.db

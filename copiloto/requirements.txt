@@ -1,0 +1,22 @@
+# === COPILOTO — dependencias ===
+# Instalación por capas recomendada (ver README). Si torch/mediapipe/fiftyone
+# fallan en Python 3.14, la demo básica funciona solo con la "capa core".
+
+# --- Capa core (ligera, imprescindible para la demo en vivo) ---
+opencv-python
+pillow
+numpy
+python-dotenv
+requests
+pyttsx3
+
+# --- Detección por puntos faciales (somnolencia EAR + distracción) ---
+# Funciona sin torch. Es el plan B robusto si el modelo HF no instala.
+mediapipe
+
+# --- Modelo de IA de Hugging Face (somnolencia) ---
+transformers
+torch
+
+# --- Validación offline del modelo ---
+fiftyone
