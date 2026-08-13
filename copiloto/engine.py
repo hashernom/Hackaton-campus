@@ -53,7 +53,7 @@ class ModelWorker:
                 continue
             try:
                 lbl, sc = self.model.predict(f)
-                self.label, self.score, self.risk = lbl, sc, self.model.is_risk(lbl)
+                self.label, self.score, self.risk = lbl, sc, self.model.is_risk(lbl, sc)
             except Exception as e:
                 print(f"[worker] error de inferencia: {e}")
 

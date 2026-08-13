@@ -55,6 +55,10 @@ class DrowsinessModel:
         return self._infer(Image.open(path))
 
     @staticmethod
-    def is_risk(label):
-        """True si la etiqueta corresponde a un estado de riesgo (somnolencia)."""
-        return config.label_is_risk(label)
+    def is_risk(label, score=1.0):
+        """True si la etiqueta es de riesgo Y la confianza supera el umbral.
+
+        Sin el umbral, una predicción "drowsy" al 51% dispara la alerta igual
+        que una al 99%, lo que genera falsos positivos frecuentes.
+        """
+        return config.label_is_risk(label) and score >= config.MODEL_CONF_THRESHOLD

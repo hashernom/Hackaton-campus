@@ -44,6 +44,12 @@ def label_is_risk(label):
         return False
     return any(k in l for k in RISK_LABEL_KEYWORDS)
 
+# Confianza mínima del modelo HF para contar la etiqueta como riesgo real.
+# Sin esto, una predicción "drowsy" al 51% pesa igual que una al 99% y genera
+# muchos falsos positivos con webcams normales (el modelo se entrena con
+# caras recortadas, no con el cuadro completo).
+MODEL_CONF_THRESHOLD = float(_get("MODEL_CONF_THRESHOLD", "0.75"))
+
 # --- Umbrales de escalado (segundos) ---
 LEVEL1_SECS = float(_get("LEVEL1_SECS", "1.5"))   # alerta en cabina (voz/visual)
 LEVEL2_SECS = float(_get("LEVEL2_SECS", "4.0"))   # notificar a contacto remoto

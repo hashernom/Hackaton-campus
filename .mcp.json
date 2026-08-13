@@ -6,6 +6,10 @@
         "C:\\Users\\s.mantilla\\Documents\\FiftyOneHackaton\\mcp-fiftyone-docs\\server.py"
       ],
       "cwd": "C:\\Users\\s.mantilla\\Documents\\FiftyOneHackaton\\mcp-fiftyone-docs"
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "@bitbonsai/mcpvault@latest", "/home/santiafanador24/Documentos/Obsidian Vault"]
     }
   }
 }
